@@ -152,9 +152,10 @@ function openJob(j) {
   currentId = j.id;
   window.curJob = j;
   document.querySelectorAll(".job").forEach(el => el.classList.remove("active"));
-  const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor");
+  const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor"), ae = $("#btnAE");
   const canEdit = j.status === "done" && j.outputs && j.outputs.json;
   ed.classList.toggle("hidden", !canEdit);
+  ae.classList.toggle("hidden", !canEdit);
   if (j.status === "done") {
     pv.classList.remove("muted");
     pv.textContent = j.text_preview || "(prázdný výstup)";
@@ -311,6 +312,108 @@ $("#edFixAll").addEventListener("click", () => { edState.segs.forEach(s => s.tok
 $("#edRevertAll").addEventListener("click", () => { edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.orig; })); renderEditor(); });
 $("#edSave").addEventListener("click", saveEdits);
 document.addEventListener("click", closeWordMenu);
+
+/* =====================  EXPORT PRO AFTER EFFECTS  ===================== */
+// rozdělí dlouhý text na kusy do max znaků (po slovech)
+function aeChunkByChars(text, max) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const chunks = []; let cur = "";
+  for (const w of words) {
+    if (cur === "") cur = w;
+    else if ((cur + " " + w).length <= max) cur += " " + w;
+    else { chunks.push(cur); cur = w; }
+  }
+  if (cur) chunks.push(cur);
+  return chunks.length ? chunks : [text];
+}
+// zalomí text do max řádků po N znacích (oddělovač "\r" = zalomení v AE)
+function aeWrapLines(text, perLine, maxLines) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines = []; let cur = "";
+  for (const w of words) {
+    if (cur === "") cur = w;
+    else if ((cur + " " + w).length <= perLine) cur += " " + w;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    const head = lines.slice(0, maxLines - 1);
+    head.push(lines.slice(maxLines - 1).join(" "));
+    return head.join("\r");
+  }
+  return lines.join("\r");
+}
+// segmenty -> titulky pro AE (dlouhé rozdělí, čas rozloží poměrně)
+function aeBuildSubs(segments, perLine, maxLines) {
+  const maxPerSub = perLine * maxLines, out = [];
+  for (const seg of segments) {
+    const text = (seg.text || "").trim(); if (!text) continue;
+    const start = seg.start || 0, end = seg.end || 0, dur = Math.max(0.2, end - start);
+    const chunks = aeChunkByChars(text, maxPerSub);
+    let t = start;
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      const e2 = (ci === chunks.length - 1) ? end : Math.min(end, t + dur * (chunk.length / text.length));
+      out.push({ s: Math.round(t * 1000) / 1000, e: Math.round(e2 * 1000) / 1000, t: aeWrapLines(chunk, perLine, maxLines) });
+      t = e2;
+    }
+  }
+  return out;
+}
+// sestaví ExtendScript (.jsx) – ES3, žádné moderní konstrukce ve výstupu
+function aeBuildJsx(subs, fontSize) {
+  return "// AutoSRT → After Effects | vygenerovano z webu Titulkovac\n" +
+    "// Spusteni: After Effects > File > Scripts > Run Script File... a vyber tento soubor.\n\n" +
+    "(function () {\n" +
+    "  var FONT_SIZE = " + fontSize + ";\n" +
+    "  var SUBS = " + JSON.stringify(subs) + ";\n" +
+    "  app.beginUndoGroup('AutoSRT titulky');\n" +
+    "  var comp = app.project.activeItem;\n" +
+    "  if (!(comp && comp instanceof CompItem)) {\n" +
+    "    var maxE = 10; for (var k = 0; k < SUBS.length; k++) { if (SUBS[k].e > maxE) maxE = SUBS[k].e; }\n" +
+    "    comp = app.project.items.addComp('AutoSRT titulky', 1920, 1080, 1.0, maxE + 1, 25);\n" +
+    "    comp.openInViewer();\n" +
+    "  }\n" +
+    "  for (var i = 0; i < SUBS.length; i++) {\n" +
+    "    var sub = SUBS[i];\n" +
+    "    var layer = comp.layers.addText(sub.t);\n" +
+    "    var prop = layer.property('Source Text'); var doc = prop.value;\n" +
+    "    doc.fontSize = FONT_SIZE; doc.applyFill = true; doc.fillColor = [1, 1, 1];\n" +
+    "    doc.applyStroke = true; doc.strokeColor = [0, 0, 0]; doc.strokeWidth = Math.max(2, Math.round(FONT_SIZE / 18)); doc.strokeOverFill = false;\n" +
+    "    doc.justification = ParagraphJustification.CENTER_JUSTIFY;\n" +
+    "    prop.setValue(doc);\n" +
+    "    layer.name = 'sub_' + (i + 1); layer.startTime = 0; layer.inPoint = sub.s; layer.outPoint = sub.e;\n" +
+    "    try { layer.property('ADBE Transform Group').property('ADBE Position').setValue([comp.width / 2, comp.height * 0.86]); } catch (e) {}\n" +
+    "  }\n" +
+    "  app.endUndoGroup();\n" +
+    "  alert('AutoSRT: vlozeno ' + SUBS.length + ' titulku.');\n" +
+    "})();\n";
+}
+function downloadBlob(text, filename, mime) {
+  const blob = new Blob(["﻿" + text], { type: (mime || "text/plain") + ";charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+async function generateAE() {
+  const size = parseInt($("#aeSize").value, 10) || 80;
+  const chars = parseInt($("#aeChars").value, 10) || 40;
+  const lines = parseInt((document.querySelector('input[name=aeLines]:checked') || {}).value, 10) || 2;
+  $("#aeMsg").textContent = "Generuji…";
+  try {
+    const data = await api(`result&id=${window.curJob.id}`);
+    const segs = (data.result && data.result.segments) || [];
+    if (!segs.length) throw new Error("žádné segmenty");
+    const subs = aeBuildSubs(segs, chars, lines);
+    const base = (window.curJob.filename || "titulky").replace(/\.[^.]+$/, "");
+    downloadBlob(aeBuildJsx(subs, size), base + "_AE.jsx", "application/javascript");
+    $("#aeMsg").textContent = "✓ Staženo: " + subs.length + " titulků (" + lines + " řádk., " + chars + " zn., " + size + " px).";
+  } catch (e) { $("#aeMsg").textContent = "Chyba: " + e.message; }
+}
+$("#btnAE").addEventListener("click", () => { $("#aeMsg").textContent = ""; $("#aeModal").classList.remove("hidden"); });
+$("#aeClose").addEventListener("click", () => $("#aeModal").classList.add("hidden"));
+$("#aeGen").addEventListener("click", generateAE);
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }

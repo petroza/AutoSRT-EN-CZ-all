@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -85,6 +85,7 @@
           <div class="card-head"><h2>Náhled</h2>
             <div class="head-tools">
               <button id="btnEditor" class="btn small ghost hidden">✎ Korektor</button>
+              <button id="btnAE" class="btn small ghost hidden">🎬 After Effects</button>
               <div id="downloads" class="downloads hidden"></div>
             </div>
           </div>
@@ -118,8 +119,33 @@
       </div>
     </div>
     <div id="wordMenu" class="word-menu hidden"></div>
+
+    <!-- EXPORT PRO AFTER EFFECTS -->
+    <div id="aeModal" class="ae-overlay hidden">
+      <div class="ae-box">
+        <div class="ae-title">🎬 Export titulků pro After Effects</div>
+        <label class="ae-row"><span>Velikost písma (px)</span>
+          <input id="aeSize" type="number" value="80" min="8" max="400" step="2"></label>
+        <label class="ae-row"><span>Znaků na řádek</span>
+          <input id="aeChars" type="number" value="40" min="10" max="120"></label>
+        <div class="ae-row"><span>Řádky</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="aeLines" value="1"> jednořádkové</label>
+            <label><input type="radio" name="aeLines" value="2" checked> dvouřádkové</label>
+          </span>
+        </div>
+        <div id="aeMsg" class="status-line"></div>
+        <div class="ae-actions">
+          <button id="aeGen" class="btn small primary">Stáhnout .jsx</button>
+          <button id="aeClose" class="btn small ghost">Zavřít</button>
+        </div>
+        <div class="ae-hint">V After Effects: <b>File → Scripts → Run Script File…</b> a vyber stažený
+          <b>.jsx</b>. Titulky se vloží jako časované textové vrstvy do aktivní kompozice
+          (nebo se vytvoří nová 1920×1080). Dlouhé titulky se automaticky rozdělí.</div>
+      </div>
+    </div>
   </div>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

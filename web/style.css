@@ -134,6 +134,20 @@ select:focus,input:focus{border-color:var(--accent)}
 .word-menu .wm-orig{color:var(--txt-dim)}
 .word-menu .wm-sep{height:1px;background:var(--line);margin:4px 0}
 
+/* ---- Export pro After Effects ---- */
+.ae-overlay{position:fixed;inset:0;background:rgba(5,7,10,.72);backdrop-filter:blur(3px);z-index:55;display:flex;align-items:center;justify-content:center;padding:16px}
+.ae-box{background:linear-gradient(180deg,var(--panel),var(--bg-2));border:1px solid var(--line-2);border-radius:10px;width:min(440px,96vw);padding:18px}
+.ae-title{font-weight:700;font-size:14px;margin-bottom:14px}
+.ae-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:12.5px;color:var(--txt-dim)}
+.ae-row>span:first-child{flex:0 0 auto}
+.ae-row input[type=number]{width:120px}
+.ae-radios{display:flex;gap:12px;flex-wrap:wrap}
+.ae-radios label{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--txt);cursor:pointer}
+.ae-radios input{accent-color:var(--accent)}
+.ae-actions{display:flex;gap:8px;margin-top:6px}
+.ae-hint{margin-top:12px;font-size:10.5px;color:var(--txt-mute);line-height:1.6}
+.ae-hint b{color:var(--txt-dim)}
+
 .footer{text-align:center;padding:12px;font-family:var(--mono);font-size:10px;color:var(--txt-mute);border-top:1px solid var(--line)}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
 @media(max-width:860px){.layout{grid-template-columns:1fr}}
