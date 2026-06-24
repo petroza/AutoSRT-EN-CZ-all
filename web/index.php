@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -134,18 +134,54 @@
             <label><input type="radio" name="aeLines" value="2" checked> dvouřádkové</label>
           </span>
         </div>
+        <div class="ae-row"><span>Pozice titulků</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="aePos" value="86" checked> dole</label>
+            <label><input type="radio" name="aePos" value="10"> nahoře</label>
+            <label><input type="radio" name="aePos" value="custom"> vlastní&nbsp;%</label>
+          </span>
+        </div>
+        <div id="aePosCustomRow" class="ae-row hidden"><span></span>
+          <span class="ae-inline-group">
+            <input id="aePosCustom" type="number" value="86" min="1" max="99" style="width:70px">
+            <span class="ae-unit">% výšky kompozice</span>
+          </span>
+        </div>
+        <div class="ae-row"><span>Nová kompozice</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="aeRes" value="1920x1080" checked> 1080p</label>
+            <label><input type="radio" name="aeRes" value="3840x2160"> 4K</label>
+            <label><input type="radio" name="aeRes" value="custom"> vlastní</label>
+          </span>
+        </div>
+        <div id="aeResCustomRow" class="ae-row hidden"><span></span>
+          <span class="ae-inline-group">
+            <input id="aeResW" type="number" value="1920" min="100" max="7680" style="width:72px">
+            <span class="ae-unit">×</span>
+            <input id="aeResH" type="number" value="1080" min="100" max="4320" style="width:72px">
+            <span class="ae-unit">px</span>
+          </span>
+        </div>
+        <div class="ae-row"><span>Snímků/s (FPS)</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="aeFps" value="24"> 24</label>
+            <label><input type="radio" name="aeFps" value="25" checked> 25</label>
+            <label><input type="radio" name="aeFps" value="30"> 30</label>
+          </span>
+        </div>
         <div id="aeMsg" class="status-line"></div>
         <div class="ae-actions">
           <button id="aeGen" class="btn small primary">Stáhnout .jsx</button>
           <button id="aeClose" class="btn small ghost">Zavřít</button>
         </div>
+        <div id="aePreview" class="ae-preview hidden"></div>
         <div class="ae-hint">V After Effects: <b>File → Scripts → Run Script File…</b> a vyber stažený
           <b>.jsx</b>. Titulky se vloží jako časované textové vrstvy do aktivní kompozice
-          (nebo se vytvoří nová 1920×1080). Dlouhé titulky se automaticky rozdělí.</div>
+          (nebo se vytvoří nová v zadaném rozlišení a FPS). Dlouhé titulky se automaticky rozdělí.</div>
       </div>
     </div>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

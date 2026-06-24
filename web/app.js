@@ -314,64 +314,61 @@ $("#edSave").addEventListener("click", saveEdits);
 document.addEventListener("click", closeWordMenu);
 
 /* =====================  EXPORT PRO AFTER EFFECTS  ===================== */
-// rozdělí dlouhý text na kusy do max znaků (po slovech)
-function aeChunkByChars(text, max) {
+// Rozdělí text na titulky respektující 2D omezení (řádky × znaků).
+// Vrací pole stringů se \r jako oddělovačem řádků (formát AE).
+function aeChunkLines(text, perLine, maxLines) {
   const words = text.split(/\s+/).filter(Boolean);
-  const chunks = []; let cur = "";
+  const result = []; let lines = [], cur = "";
   for (const w of words) {
-    if (cur === "") cur = w;
-    else if ((cur + " " + w).length <= max) cur += " " + w;
-    else { chunks.push(cur); cur = w; }
-  }
-  if (cur) chunks.push(cur);
-  return chunks.length ? chunks : [text];
-}
-// zalomí text do max řádků po N znacích (oddělovač "\r" = zalomení v AE)
-function aeWrapLines(text, perLine, maxLines) {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines = []; let cur = "";
-  for (const w of words) {
-    if (cur === "") cur = w;
-    else if ((cur + " " + w).length <= perLine) cur += " " + w;
-    else { lines.push(cur); cur = w; }
+    const candidate = cur ? cur + " " + w : w;
+    if (candidate.length <= perLine) {
+      cur = candidate;
+    } else {
+      if (cur) lines.push(cur);
+      cur = w;
+      if (lines.length >= maxLines) {
+        result.push(lines.join("\r"));
+        lines = [];
+      }
+    }
   }
   if (cur) lines.push(cur);
-  if (lines.length > maxLines) {
-    const head = lines.slice(0, maxLines - 1);
-    head.push(lines.slice(maxLines - 1).join(" "));
-    return head.join("\r");
-  }
-  return lines.join("\r");
+  if (lines.length) result.push(lines.join("\r"));
+  return result.length ? result : [text];
 }
-// segmenty -> titulky pro AE (dlouhé rozdělí, čas rozloží poměrně)
+// segmenty -> titulky pro AE; čas každého kusu se rozdělí poměrně dle délky
 function aeBuildSubs(segments, perLine, maxLines) {
-  const maxPerSub = perLine * maxLines, out = [];
+  const out = [];
   for (const seg of segments) {
     const text = (seg.text || "").trim(); if (!text) continue;
     const start = seg.start || 0, end = seg.end || 0, dur = Math.max(0.2, end - start);
-    const chunks = aeChunkByChars(text, maxPerSub);
+    const chunks = aeChunkLines(text, perLine, maxLines);
+    const totalLen = chunks.reduce((s, c) => s + c.replace(/\r/g, " ").length, 0) || 1;
     let t = start;
     for (let ci = 0; ci < chunks.length; ci++) {
       const chunk = chunks[ci];
-      const e2 = (ci === chunks.length - 1) ? end : Math.min(end, t + dur * (chunk.length / text.length));
-      out.push({ s: Math.round(t * 1000) / 1000, e: Math.round(e2 * 1000) / 1000, t: aeWrapLines(chunk, perLine, maxLines) });
+      const chunkLen = chunk.replace(/\r/g, " ").length;
+      const e2 = (ci === chunks.length - 1) ? end : Math.min(end, t + dur * (chunkLen / totalLen));
+      out.push({ s: Math.round(t * 1000) / 1000, e: Math.round(e2 * 1000) / 1000, t: chunk });
       t = e2;
     }
   }
   return out;
 }
 // sestaví ExtendScript (.jsx) – ES3, žádné moderní konstrukce ve výstupu
-function aeBuildJsx(subs, fontSize) {
+function aeBuildJsx(subs, fontSize, compW, compH, fps, posYpct) {
   return "// AutoSRT → After Effects | vygenerovano z webu Titulkovac\n" +
     "// Spusteni: After Effects > File > Scripts > Run Script File... a vyber tento soubor.\n\n" +
     "(function () {\n" +
     "  var FONT_SIZE = " + fontSize + ";\n" +
+    "  var COMP_W = " + compW + ", COMP_H = " + compH + ", COMP_FPS = " + fps + ";\n" +
+    "  var POS_Y_PCT = " + posYpct + ";\n" +
     "  var SUBS = " + JSON.stringify(subs) + ";\n" +
     "  app.beginUndoGroup('AutoSRT titulky');\n" +
     "  var comp = app.project.activeItem;\n" +
     "  if (!(comp && comp instanceof CompItem)) {\n" +
     "    var maxE = 10; for (var k = 0; k < SUBS.length; k++) { if (SUBS[k].e > maxE) maxE = SUBS[k].e; }\n" +
-    "    comp = app.project.items.addComp('AutoSRT titulky', 1920, 1080, 1.0, maxE + 1, 25);\n" +
+    "    comp = app.project.items.addComp('AutoSRT titulky', COMP_W, COMP_H, 1.0, maxE + 1, COMP_FPS);\n" +
     "    comp.openInViewer();\n" +
     "  }\n" +
     "  for (var i = 0; i < SUBS.length; i++) {\n" +
@@ -382,8 +379,9 @@ function aeBuildJsx(subs, fontSize) {
     "    doc.applyStroke = true; doc.strokeColor = [0, 0, 0]; doc.strokeWidth = Math.max(2, Math.round(FONT_SIZE / 18)); doc.strokeOverFill = false;\n" +
     "    doc.justification = ParagraphJustification.CENTER_JUSTIFY;\n" +
     "    prop.setValue(doc);\n" +
-    "    layer.name = 'sub_' + (i + 1); layer.startTime = 0; layer.inPoint = sub.s; layer.outPoint = sub.e;\n" +
-    "    try { layer.property('ADBE Transform Group').property('ADBE Position').setValue([comp.width / 2, comp.height * 0.86]); } catch (e) {}\n" +
+    "    layer.name = (i + 1) + ' ' + sub.t.replace(/\\r/g, ' ').substring(0, 28);\n" +
+    "    layer.startTime = 0; layer.inPoint = sub.s; layer.outPoint = sub.e;\n" +
+    "    try { layer.property('ADBE Transform Group').property('ADBE Position').setValue([comp.width / 2, comp.height * (POS_Y_PCT / 100)]); } catch (e) {}\n" +
     "  }\n" +
     "  app.endUndoGroup();\n" +
     "  alert('AutoSRT: vlozeno ' + SUBS.length + ' titulku.');\n" +
@@ -396,10 +394,42 @@ function downloadBlob(text, filename, mime) {
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
+function aeTs(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ":" + (s < 10 ? "0" : "") + s.toFixed(2);
+}
+function renderAePreview(subs) {
+  const el = $("#aePreview");
+  if (!subs.length) { el.classList.add("hidden"); return; }
+  let html = '<div class="ae-prev-head">' + subs.length + " titulků</div>" +
+    '<table class="ae-prev-table">';
+  for (let i = 0; i < subs.length; i++) {
+    const s = subs[i];
+    html += "<tr><td class=\"ae-prev-n\">" + (i + 1) + "</td>" +
+      "<td class=\"ae-prev-t\">" + aeTs(s.s) + "–" + aeTs(s.e) + "</td>" +
+      "<td class=\"ae-prev-txt\">" + esc(s.t).replace(/\r/g, "<br>") + "</td></tr>";
+  }
+  html += "</table>";
+  el.innerHTML = html;
+  el.classList.remove("hidden");
+}
 async function generateAE() {
-  const size = parseInt($("#aeSize").value, 10) || 80;
+  const size  = parseInt($("#aeSize").value, 10) || 80;
   const chars = parseInt($("#aeChars").value, 10) || 40;
-  const lines = parseInt((document.querySelector('input[name=aeLines]:checked') || {}).value, 10) || 2;
+  const lines = parseInt((document.querySelector("input[name=aeLines]:checked") || {}).value, 10) || 2;
+  const posRadio = document.querySelector("input[name=aePos]:checked");
+  const posY = posRadio && posRadio.value === "custom"
+    ? (parseFloat($("#aePosCustom").value) || 86) : (parseFloat((posRadio || {}).value) || 86);
+  const resRadio = document.querySelector("input[name=aeRes]:checked");
+  let compW = 1920, compH = 1080;
+  if (resRadio && resRadio.value === "custom") {
+    compW = parseInt($("#aeResW").value, 10) || 1920;
+    compH = parseInt($("#aeResH").value, 10) || 1080;
+  } else if (resRadio) {
+    const p = resRadio.value.split("x");
+    compW = parseInt(p[0], 10); compH = parseInt(p[1], 10);
+  }
+  const fps = parseFloat((document.querySelector("input[name=aeFps]:checked") || {}).value) || 25;
   $("#aeMsg").textContent = "Generuji…";
   try {
     const data = await api(`result&id=${window.curJob.id}`);
@@ -407,13 +437,25 @@ async function generateAE() {
     if (!segs.length) throw new Error("žádné segmenty");
     const subs = aeBuildSubs(segs, chars, lines);
     const base = (window.curJob.filename || "titulky").replace(/\.[^.]+$/, "");
-    downloadBlob(aeBuildJsx(subs, size), base + "_AE.jsx", "application/javascript");
+    downloadBlob(aeBuildJsx(subs, size, compW, compH, fps, posY), base + "_AE.jsx", "application/javascript");
     $("#aeMsg").textContent = "✓ Staženo: " + subs.length + " titulků (" + lines + " řádk., " + chars + " zn., " + size + " px).";
+    renderAePreview(subs);
   } catch (e) { $("#aeMsg").textContent = "Chyba: " + e.message; }
 }
-$("#btnAE").addEventListener("click", () => { $("#aeMsg").textContent = ""; $("#aeModal").classList.remove("hidden"); });
+$("#btnAE").addEventListener("click", () => {
+  $("#aeMsg").textContent = ""; $("#aePreview").classList.add("hidden");
+  $("#aeModal").classList.remove("hidden");
+});
 $("#aeClose").addEventListener("click", () => $("#aeModal").classList.add("hidden"));
 $("#aeGen").addEventListener("click", generateAE);
+document.querySelectorAll("input[name=aePos]").forEach(r => r.addEventListener("change", () => {
+  const custom = document.querySelector("input[name=aePos][value=custom]").checked;
+  $("#aePosCustomRow").classList.toggle("hidden", !custom);
+}));
+document.querySelectorAll("input[name=aeRes]").forEach(r => r.addEventListener("change", () => {
+  const custom = document.querySelector("input[name=aeRes][value=custom]").checked;
+  $("#aeResCustomRow").classList.toggle("hidden", !custom);
+}));
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }
