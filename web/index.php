@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -124,51 +124,62 @@
     <div id="aeModal" class="ae-overlay hidden">
       <div class="ae-box">
         <div class="ae-title">🎬 Export titulků pro After Effects</div>
-        <label class="ae-row"><span>Velikost písma (px)</span>
-          <input id="aeSize" type="number" value="80" min="8" max="400" step="2"></label>
-        <label class="ae-row"><span>Znaků na řádek</span>
-          <input id="aeChars" type="number" value="40" min="10" max="120"></label>
-        <div class="ae-row"><span>Řádky</span>
-          <span class="ae-radios">
-            <label><input type="radio" name="aeLines" value="1"> jednořádkové</label>
-            <label><input type="radio" name="aeLines" value="2" checked> dvouřádkové</label>
-          </span>
+        <div class="ae-tabs" role="tablist">
+          <button class="ae-tab active" data-tab="0" role="tab" aria-selected="true">Titulky</button>
+          <button class="ae-tab" data-tab="1" role="tab" aria-selected="false">Kompozice</button>
         </div>
-        <div class="ae-row"><span>Pozice titulků</span>
-          <span class="ae-radios">
-            <label><input type="radio" name="aePos" value="86" checked> dole</label>
-            <label><input type="radio" name="aePos" value="10"> nahoře</label>
-            <label><input type="radio" name="aePos" value="custom"> vlastní&nbsp;%</label>
-          </span>
+
+        <div class="ae-tab-panel" data-panel="0" role="tabpanel">
+          <label class="ae-row"><span>Velikost písma (px)</span>
+            <input id="aeSize" type="number" value="80" min="8" max="400" step="2"></label>
+          <label class="ae-row"><span>Znaků na řádek</span>
+            <input id="aeChars" type="number" value="40" min="10" max="120"></label>
+          <div class="ae-row"><span>Řádky</span>
+            <span class="ae-radios">
+              <label><input type="radio" name="aeLines" value="1"> jednořádkové</label>
+              <label><input type="radio" name="aeLines" value="2" checked> dvouřádkové</label>
+            </span>
+          </div>
         </div>
-        <div id="aePosCustomRow" class="ae-row hidden"><span></span>
-          <span class="ae-inline-group">
-            <input id="aePosCustom" type="number" value="86" min="1" max="99" style="width:70px">
-            <span class="ae-unit">% výšky kompozice</span>
-          </span>
+
+        <div class="ae-tab-panel ae-tab-hidden" data-panel="1" role="tabpanel">
+          <div class="ae-row"><span>Pozice titulků</span>
+            <span class="ae-radios">
+              <label><input type="radio" name="aePos" value="86" checked> dole</label>
+              <label><input type="radio" name="aePos" value="10"> nahoře</label>
+              <label><input type="radio" name="aePos" value="custom"> vlastní&nbsp;%</label>
+            </span>
+          </div>
+          <div id="aePosCustomRow" class="ae-row hidden"><span></span>
+            <span class="ae-inline-group">
+              <input id="aePosCustom" type="number" value="86" min="1" max="99" style="width:70px">
+              <span class="ae-unit">% výšky kompozice</span>
+            </span>
+          </div>
+          <div class="ae-row"><span>Nová kompozice</span>
+            <span class="ae-radios">
+              <label><input type="radio" name="aeRes" value="1920x1080" checked> 1080p</label>
+              <label><input type="radio" name="aeRes" value="3840x2160"> 4K</label>
+              <label><input type="radio" name="aeRes" value="custom"> vlastní</label>
+            </span>
+          </div>
+          <div id="aeResCustomRow" class="ae-row hidden"><span></span>
+            <span class="ae-inline-group">
+              <input id="aeResW" type="number" value="1920" min="100" max="7680" style="width:72px">
+              <span class="ae-unit">×</span>
+              <input id="aeResH" type="number" value="1080" min="100" max="4320" style="width:72px">
+              <span class="ae-unit">px</span>
+            </span>
+          </div>
+          <div class="ae-row"><span>Snímků/s (FPS)</span>
+            <span class="ae-radios">
+              <label><input type="radio" name="aeFps" value="24"> 24</label>
+              <label><input type="radio" name="aeFps" value="25" checked> 25</label>
+              <label><input type="radio" name="aeFps" value="30"> 30</label>
+            </span>
+          </div>
         </div>
-        <div class="ae-row"><span>Nová kompozice</span>
-          <span class="ae-radios">
-            <label><input type="radio" name="aeRes" value="1920x1080" checked> 1080p</label>
-            <label><input type="radio" name="aeRes" value="3840x2160"> 4K</label>
-            <label><input type="radio" name="aeRes" value="custom"> vlastní</label>
-          </span>
-        </div>
-        <div id="aeResCustomRow" class="ae-row hidden"><span></span>
-          <span class="ae-inline-group">
-            <input id="aeResW" type="number" value="1920" min="100" max="7680" style="width:72px">
-            <span class="ae-unit">×</span>
-            <input id="aeResH" type="number" value="1080" min="100" max="4320" style="width:72px">
-            <span class="ae-unit">px</span>
-          </span>
-        </div>
-        <div class="ae-row"><span>Snímků/s (FPS)</span>
-          <span class="ae-radios">
-            <label><input type="radio" name="aeFps" value="24"> 24</label>
-            <label><input type="radio" name="aeFps" value="25" checked> 25</label>
-            <label><input type="radio" name="aeFps" value="30"> 30</label>
-          </span>
-        </div>
+
         <div id="aeMsg" class="status-line"></div>
         <div class="ae-actions">
           <button id="aeGen" class="btn small primary">Stáhnout .jsx</button>
@@ -182,6 +193,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

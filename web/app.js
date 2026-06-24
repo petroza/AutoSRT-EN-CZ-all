@@ -448,6 +448,12 @@ $("#btnAE").addEventListener("click", () => {
 });
 $("#aeClose").addEventListener("click", () => $("#aeModal").classList.add("hidden"));
 $("#aeGen").addEventListener("click", generateAE);
+document.querySelectorAll(".ae-tab").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll(".ae-tab").forEach(b => { b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
+  document.querySelectorAll(".ae-tab-panel").forEach(p => p.classList.add("ae-tab-hidden"));
+  btn.classList.add("active"); btn.setAttribute("aria-selected","true");
+  document.querySelector(".ae-tab-panel[data-panel='" + btn.dataset.tab + "']").classList.remove("ae-tab-hidden");
+}));
 document.querySelectorAll("input[name=aePos]").forEach(r => r.addEventListener("change", () => {
   const custom = document.querySelector("input[name=aePos][value=custom]").checked;
   $("#aePosCustomRow").classList.toggle("hidden", !custom);
