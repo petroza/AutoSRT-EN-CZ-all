@@ -84,6 +84,68 @@ case 'upload':
     save_job($job);
     jsend(['ok' => true, 'job' => public_job($job)]);
 
+// ---------- CHUNKED UPLOAD (obchází 413 limit hostingu) --------------------
+// Velké soubory (mobil, dlouhá videa) se posílají po malých kouscích, takže
+// žádný jednotlivý request nepřekročí limit velikosti těla na hostingu.
+case 'upload_init':
+    require_login();
+    $orig = (string)($_POST['filename'] ?? '');
+    $ext  = clean_ext(pathinfo($orig, PATHINFO_EXTENSION));
+    if (!$ext) jsend(['error' => 'Nepodporovaný formát souboru'], 400);
+    $lang = (string)($_POST['language'] ?? 'cs-CZ');
+    if (!in_array($lang, LANGUAGES, true)) $lang = 'cs-CZ';
+    $llm = (string)($_POST['llm'] ?? '1') === '1';
+    $fmts = array_values(array_filter(
+        explode(',', (string)($_POST['formats'] ?? 'txt,srt,vtt,json')),
+        fn($f) => in_array($f, OUT_FORMATS, true)
+    ));
+    if (!$fmts) $fmts = OUT_FORMATS;
+    $id = new_id();
+    @file_put_contents(UP_DIR . '/' . $id . '.part', '');
+    $job = [
+        'id' => $id, 'filename' => basename($orig), 'owner' => current_user(),
+        'ext' => $ext, 'language' => $lang, 'llm' => $llm, 'formats' => $fmts,
+        'status' => 'uploading', 'progress' => 0,
+        'created_at' => now(), 'updated_at' => now(),
+        'finished_at' => null, 'error' => null,
+        'duration' => 0, 'text_preview' => '', 'outputs' => [], 'size' => 0,
+    ];
+    save_job($job);
+    jsend(['ok' => true, 'id' => $id]);
+
+case 'upload_chunk':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j) || ($j['status'] ?? '') !== 'uploading')
+        jsend(['error' => 'Neplatné nahrávání'], 400);
+    if (empty($_FILES['chunk']) || !is_uploaded_file($_FILES['chunk']['tmp_name'] ?? ''))
+        jsend(['error' => 'Chybí část souboru'], 400);
+    $part = UP_DIR . '/' . clean_id($j['id']) . '.part';
+    $cur = is_file($part) ? filesize($part) : 0;
+    if ($cur + (int)$_FILES['chunk']['size'] > MAX_UPLOAD_MB * 1024 * 1024)
+        jsend(['error' => 'Soubor je příliš velký (limit ' . MAX_UPLOAD_MB . ' MB)'], 400);
+    $in = fopen($_FILES['chunk']['tmp_name'], 'rb');
+    $out = fopen($part, 'ab');
+    if (!$in || !$out) jsend(['error' => 'Nelze zapsat část souboru'], 500);
+    while (!feof($in)) fwrite($out, fread($in, 1 << 18));
+    fclose($in); fclose($out);
+    jsend(['ok' => true, 'received' => filesize($part)]);
+
+case 'upload_finish':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j) || ($j['status'] ?? '') !== 'uploading')
+        jsend(['error' => 'Neplatné nahrávání'], 400);
+    $part = UP_DIR . '/' . clean_id($j['id']) . '.part';
+    $dest = UP_DIR . '/' . clean_id($j['id']) . '.' . clean_ext($j['ext']);
+    if (!is_file($part) || filesize($part) === 0) jsend(['error' => 'Žádná data nenahrána'], 400);
+    if (!@rename($part, $dest)) jsend(['error' => 'Nelze dokončit nahrávání'], 500);
+    $j['size'] = filesize($dest);
+    $j['status'] = 'pending';
+    $j['updated_at'] = now();
+    save_job($j);
+    jsend(['ok' => true, 'job' => public_job($j)]);
+
 // ---------- LIST / JOB DETAIL ----------------------------------------------
 case 'list':
     require_login();

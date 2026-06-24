@@ -28,7 +28,7 @@ function uploadWithProgress(fd, onProgress) {
   });
 }
 
-const STATUS_TXT = { pending: "Ve frontě", processing: "Zpracovává worker…", done: "Hotovo", error: "Chyba" };
+const STATUS_TXT = { uploading: "Nahrávám…", pending: "Ve frontě", processing: "Zpracovává worker…", done: "Hotovo", error: "Chyba" };
 let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null, translatePollTimer = null;
 
 /* ---- login ---- */
@@ -83,29 +83,38 @@ $("#btnUpload").addEventListener("click", async () => {
   $("#btnUpload").disabled = true;
   const prog = $("#upProg"), bar = $("#upBar");
   prog.classList.remove("hidden", "indet"); bar.style.width = "0%";
-  const totalMB = (selectedFile.size / 1048576).toFixed(1);
-  setMsg("uploadMsg", "Nahrávám…", "");
-  const fd = new FormData();
-  fd.append("file", selectedFile);
-  fd.append("language", $("#language").value);
-  fd.append("formats", f.join(","));
-  fd.append("llm", $("#useLlm").checked ? "1" : "0");
+  const total = selectedFile.size, totalMB = (total / 1048576).toFixed(1);
+  setMsg("uploadMsg", "Připravuji nahrávání…", "");
   try {
-    const r = await uploadWithProgress(fd, (loaded, total) => {
-      if (loaded < 0) {                       // průběh neznámý -> neurčitý pruh
-        prog.classList.add("indet");
-        setMsg("uploadMsg", "Nahrávám… (" + totalMB + " MB)", "");
-        return;
-      }
-      const pct = total ? Math.round(loaded / total * 100) : 0;
+    // 1) inicializace (jen metadata, žádná data) -> id zakázky
+    const initFd = new FormData();
+    initFd.append("filename", selectedFile.name);
+    initFd.append("language", $("#language").value);
+    initFd.append("formats", f.join(","));
+    initFd.append("llm", $("#useLlm").checked ? "1" : "0");
+    const init = await api("upload_init", { method: "POST", body: initFd });
+    const id = init.id;
+
+    // 2) soubor po malých kouscích (obchází 413 limit hostingu)
+    const CHUNK = 4 * 1024 * 1024;   // 4 MB
+    let sent = 0;
+    for (let off = 0; off < total; off += CHUNK) {
+      const blob = selectedFile.slice(off, Math.min(off + CHUNK, total));
+      await sendChunk(id, blob);
+      sent += blob.size;
+      const pct = Math.round(sent / total * 100);
       bar.style.width = pct + "%";
-      if (pct >= 100) setMsg("uploadMsg", "Nahráno, ukládám na serveru…", "");
-      else setMsg("uploadMsg", `Nahrávám… ${pct}% (${(loaded / 1048576).toFixed(1)} / ${totalMB} MB)`, "");
-    });
+      setMsg("uploadMsg", `Nahrávám… ${pct}% (${(sent / 1048576).toFixed(1)} / ${totalMB} MB)`, "");
+    }
+
+    // 3) dokončení -> zakázka přejde do fronty
+    setMsg("uploadMsg", "Dokončuji na serveru…", "");
+    const finFd = new FormData(); finFd.append("id", id);
+    const fin = await api("upload_finish", { method: "POST", body: finFd });
     bar.style.width = "100%";
     setMsg("uploadMsg", "✓ Odesláno do fronty. Až poběží worker, přepíše se.", "ok");
     selectedFile = null; $("#fileInput").value = ""; $("#fileInfo").classList.add("hidden");
-    currentId = r.job.id;
+    currentId = fin.job.id;
     setTimeout(() => prog.classList.add("hidden"), 900);
     loadJobs();
   } catch (e) {
@@ -115,6 +124,21 @@ $("#btnUpload").addEventListener("click", async () => {
     $("#btnUpload").disabled = false;
   }
 });
+
+// pošle jeden kousek s pár pokusy (mobilní síť občas zakolísá)
+async function sendChunk(id, blob) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const fd = new FormData();
+      fd.append("id", id);
+      fd.append("chunk", blob);
+      return await api("upload_chunk", { method: "POST", body: fd });
+    } catch (e) {
+      if (attempt === 2) throw e;
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+}
 
 /* ---- jobs ---- */
 async function loadJobs() {

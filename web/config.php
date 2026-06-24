@@ -17,7 +17,7 @@ const USERS = [
 const WORKER_TOKEN = 'd839656e2cb8512f7e41dedd020dce525564f2697c87feb7';
 
 // --- Limity / povolené hodnoty -------------------------------------------
-const MAX_UPLOAD_MB = 500;
+const MAX_UPLOAD_MB = 2048;   // chunked upload obchází limit těla requestu na hostingu
 const ALLOWED_EXT  = ['wav','mp3','mp4','mov','m4a','mkv','aac','flac','ogg','opus','webm','avi'];
 const LANGUAGES    = ['auto','cs-CZ','en-US','uk-UA','ru-RU'];
 const OUT_FORMATS  = ['txt','srt','vtt','json'];

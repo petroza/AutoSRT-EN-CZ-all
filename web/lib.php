@@ -146,6 +146,7 @@ function delete_job_files(array $job): void {
     $id = clean_id($job['id']);
     $ext = clean_ext($job['ext'] ?? '');
     if ($ext) @unlink(UP_DIR . '/' . $id . '.' . $ext);
+    @unlink(UP_DIR . '/' . $id . '.part');   // nedokončený chunked upload
     foreach (OUT_FORMATS as $fmt) @unlink(OUT_DIR . '/' . $id . '.' . $fmt);
     @unlink(job_path($id));
 }
