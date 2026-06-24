@@ -543,6 +543,7 @@ async function requestBurnin() {
   fd.append("pos", (document.querySelector('input[name=biPos]:checked') || {}).value || "2");
   fd.append("margin", $("#biMargin").value);
   fd.append("chars", $("#biChars").value);
+  fd.append("lines", (document.querySelector('input[name=biLines]:checked') || {}).value || "2");
   fd.append("bold", $("#biBold").checked ? "1" : "0");
   try {
     await api("request_burnin", { method: "POST", body: fd });

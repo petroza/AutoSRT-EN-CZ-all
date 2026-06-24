@@ -270,6 +270,7 @@ case 'request_burnin':
         'marginv' => max(0, min(600, (int)($_POST['margin'] ?? 36))),
         'chars'   => max(0, min(120, (int)($_POST['chars'] ?? 42))),
         'bold'    => ((string)($_POST['bold'] ?? '0')) === '1',
+        'maxlines' => ((int)($_POST['lines'] ?? 2) === 1) ? 1 : 2,
     ];
 
     // které titulky zapéct: 'original' nebo cílový jazyk dokončeného překladu

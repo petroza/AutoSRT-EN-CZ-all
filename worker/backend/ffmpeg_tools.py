@@ -159,6 +159,29 @@ def get_video_fps(path: Union[str, Path], log: LogFn = None) -> Optional[float]:
     return None
 
 
+def get_video_size(path: Union[str, Path], log: LogFn = None) -> tuple:
+    """Vrátí (šířka, výška) první video stopy, fallback (1920, 1080)."""
+    path = Path(path)
+    ffprobe = config.find_ffprobe()
+    if ffprobe:
+        try:
+            out = subprocess.run(
+                [str(ffprobe), "-v", "quiet", "-print_format", "json",
+                 "-show_streams", "-select_streams", "v:0", str(path)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=30, **_popen_kwargs(),
+            )
+            streams = json.loads(out.stdout or "{}").get("streams", [])
+            if streams:
+                w = int(streams[0].get("width") or 0)
+                h = int(streams[0].get("height") or 0)
+                if w > 0 and h > 0:
+                    return (w, h)
+        except Exception as e:
+            _log(log, f"ffprobe rozměry nezjistil: {e}")
+    return (1920, 1080)
+
+
 def _wrap_line(text: str, chars: int, max_lines: int = 2) -> str:
     """Zalomí text na řádky do `chars` znaků (po slovech), max `max_lines` řádků."""
     words = (text or "").split()
@@ -180,8 +203,9 @@ def _wrap_line(text: str, chars: int, max_lines: int = 2) -> str:
     return "\n".join(lines)
 
 
-def _rewrap_srt(srt_text: str, chars: int) -> str:
-    """Přepíše každý titulek v SRT tak, aby měl max `chars` znaků na řádek."""
+def _rewrap_srt(srt_text: str, chars: int, max_lines: int = 2) -> str:
+    """Přepíše každý titulek v SRT tak, aby měl max `chars` znaků na řádek
+    a nejvýš `max_lines` řádků."""
     import re as _re
     blocks = _re.split(r"\r?\n\s*\r?\n", (srt_text or "").strip())
     out = []
@@ -189,10 +213,57 @@ def _rewrap_srt(srt_text: str, chars: int) -> str:
         lines = b.splitlines()
         if len(lines) >= 3 and "-->" in lines[1]:
             text = " ".join(l.strip() for l in lines[2:] if l.strip())
-            out.append(lines[0] + "\n" + lines[1] + "\n" + _wrap_line(text, chars))
+            out.append(lines[0] + "\n" + lines[1] + "\n" + _wrap_line(text, chars, max_lines))
         elif b.strip():
             out.append(b)
     return "\n\n".join(out) + "\n"
+
+
+def _srt_ts_to_ass(ts: str) -> str:
+    """HH:MM:SS,mmm -> H:MM:SS.cc (ASS čas)."""
+    ts = ts.strip().replace(".", ",")
+    try:
+        hh, mm, rest = ts.split(":")
+        ss, ms = rest.split(",")
+        return f"{int(hh)}:{int(mm):02d}:{int(ss):02d}.{int(ms) // 10:02d}"
+    except Exception:
+        return "0:00:00.00"
+
+
+def _build_ass(srt_text: str, vid_w: int, vid_h: int, font: str, size: int,
+               align: int, marginv: int, bold: int, outline: int,
+               chars: int, max_lines: int) -> str:
+    """Sestaví ASS titulky s WrapStyle:2 (vypne auto-zalamování libass), takže
+    počet řádků je přesně dán (1 nebo 2) – ne šířkou videa."""
+    import re as _re
+    blocks = _re.split(r"\r?\n\s*\r?\n", (srt_text or "").strip())
+    events = []
+    wrap_chars = chars if (chars and chars >= 10) else (1000 if max_lines == 1 else 42)
+    for b in blocks:
+        lines = b.splitlines()
+        if len(lines) >= 3 and "-->" in lines[1]:
+            start, _, end = lines[1].partition("-->")
+            text = " ".join(l.strip() for l in lines[2:] if l.strip())
+            wrapped = _wrap_line(text, wrap_chars, max_lines).replace("\n", "\\N")
+            events.append(
+                f"Dialogue: 0,{_srt_ts_to_ass(start)},{_srt_ts_to_ass(end)},"
+                f"Default,,0,0,0,,{wrapped}")
+    header = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "WrapStyle: 2\n"
+        f"PlayResX: {vid_w}\nPlayResY: {vid_h}\n"
+        "ScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, "
+        "Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,{font},{size},&H00FFFFFF,&H00000000,&H00000000,{bold},0,0,0,"
+        f"100,100,0,0,1,{outline},0,{align},40,40,{marginv},1\n\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    return header + "\n".join(events) + "\n"
 
 
 def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
@@ -225,24 +296,24 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     bold = -1 if opts.get("bold") else 0
     outline = max(1, round(size / 12))
     chars = int(opts.get("chars", 0) or 0)
-    style = (f"FontName={font},FontSize={size},PrimaryColour=&H00FFFFFF,"
-             f"OutlineColour=&H00000000,BorderStyle=1,Outline={outline},Shadow=0,"
-             f"Bold={bold},Alignment={align},MarginV={marginv}")
+    maxlines = 1 if int(opts.get("maxlines", 2) or 2) == 1 else 2
 
-    # SRT (případně přezalomené) dáme vedle výstupu a ffmpeg pustíme s cwd
-    # ve složce SRT + relativní název (Windows neumí dvojtečku disku ve filtru).
-    tmp_srt = output_path.with_suffix(".tmp.srt")
+    # Vlastní ASS s WrapStyle:2 – počet řádků (1/2) je pevně daný, libass
+    # dlouhý řádek sám nezalomí. ASS dáme vedle výstupu a ffmpeg pustíme s cwd
+    # (Windows neumí dvojtečku disku ve filtru -> relativní název).
+    vid_w, vid_h = get_video_size(video_path, log)
     src_text = srt_path.read_text(encoding="utf-8", errors="replace")
-    if chars and chars >= 10:
-        src_text = _rewrap_srt(src_text, chars)
-    tmp_srt.write_text(src_text, encoding="utf-8")
-    work_dir = tmp_srt.parent
-    srt_rel = tmp_srt.name
+    ass_text = _build_ass(src_text, vid_w, vid_h, font, size, align, marginv,
+                          bold, outline, chars, maxlines)
+    tmp_ass = output_path.with_suffix(".tmp.ass")
+    tmp_ass.write_text(ass_text, encoding="utf-8")
+    work_dir = tmp_ass.parent
+    srt_rel = tmp_ass.name
 
     total = get_audio_duration(video_path) or 0.0
     cmd = [
         str(ffmpeg), "-y", "-i", str(video_path),
-        "-vf", f"subtitles={srt_rel}:force_style='{style}'",
+        "-vf", f"subtitles={srt_rel}",
         "-c:v", "libx264", "-crf", "23", "-preset", "fast",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
         "-progress", "pipe:1", "-nostats", str(output_path),
@@ -272,7 +343,7 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
             proc.wait()
             rc = proc.returncode
     finally:
-        for p in (tmp_srt,):
+        for p in (tmp_ass,):
             try:
                 p.unlink(missing_ok=True)
             except Exception:

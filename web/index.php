@@ -246,6 +246,11 @@
           <input id="biMargin" type="number" value="36" min="0" max="400"></label>
         <label class="ae-row"><span>Znaků na řádek</span>
           <input id="biChars" type="number" value="42" min="10" max="120"></label>
+        <div class="ae-row"><span>Řádky</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="biLines" value="1"> jednořádkové</label>
+            <label><input type="radio" name="biLines" value="2" checked> dvouřádkové</label>
+          </span></div>
         <label class="ae-row"><span>Tučně</span>
           <span class="ae-radios"><label><input type="checkbox" id="biBold"> tučné písmo</label></span></label>
         <div id="biMsg" class="status-line"></div>
@@ -285,6 +290,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
