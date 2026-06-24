@@ -45,7 +45,10 @@ přepíše a nahraje zpět. Web obsahuje:
 - přihlášení (víc účtů, role admin/user — admin vidí vše, user jen svoje),
 - přepínač automatické LLM opravy (Ollama) u nahrávání,
 - **korektor titulků ve stylu Wordu**: opravená/nejistá slova podtržená vlnovkou,
-  klik/tap → návrh / původní tvar / ruční přepis, „Opravit vše" a regenerace titulků.
+  klik/tap → návrh / původní tvar / ruční přepis, „Opravit vše" a regenerace titulků,
+- **export pro After Effects (.jsx)**: nastavíš velikost písma, počet znaků na řádek a
+  jedno/dvouřádkové; vygeneruje ExtendScript, který v AE vloží časované textové vrstvy
+  (dlouhé titulky se automaticky rozdělí), spuštění přes *File → Scripts → Run Script File*.
 
 **Nasazení:** nahraj obsah `web/` na PHP hosting (vč. skrytých `.htaccess`/`.user.ini`).
 
