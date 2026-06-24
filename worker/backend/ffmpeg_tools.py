@@ -180,12 +180,16 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     tmp_srt = output_path.with_suffix(".tmp.srt")
     try:
         shutil.copy2(srt_path, tmp_srt)
-        srt_ff = str(tmp_srt).replace("\\", "/")
+        # POZOR (Windows): ffmpeg subtitles filtr neumí dvojtečku v cestě
+        # (C:/, O:/ ...). Proto spustíme ffmpeg s pracovním adresářem ve
+        # složce SRT a ve filtru použijeme jen RELATIVNÍ název (bez dvojtečky).
+        work_dir = tmp_srt.parent
+        srt_rel = tmp_srt.name
 
         cmd = [
             str(ffmpeg), "-y",
             "-i", str(video_path),
-            "-vf", f"subtitles='{srt_ff}':force_style="
+            "-vf", f"subtitles={srt_rel}:force_style="
                    "'FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,"
                    "OutlineColour=&H00000000,Outline=2,Bold=0,Alignment=2'",
             "-c:v", "libx264", "-crf", "23", "-preset", "fast",
@@ -193,9 +197,10 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
             "-movflags", "+faststart",
             str(output_path),
         ]
-        _log(log, "FFMPEG burn-in: " + " ".join(cmd))
+        _log(log, f"FFMPEG burn-in (cwd={work_dir}): " + " ".join(cmd))
         proc = subprocess.run(cmd, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", **_popen_kwargs())
+                              encoding="utf-8", errors="replace",
+                              cwd=str(work_dir), **_popen_kwargs())
     finally:
         try:
             tmp_srt.unlink(missing_ok=True)
