@@ -142,9 +142,10 @@ def process_burnin(job):
     progress(jid, "burning", 10)
     _download({"action": "worker_source", "id": src_id}, src_video)
 
-    # 2) stáhni SRT ze zdrojového jobu
+    # 2) stáhni SRT ze zdrojového jobu (originál nebo překlad dle 'subs')
     progress(jid, "burning", 25)
-    _download({"action": "worker_burnin_srt", "id": src_id}, src_srt)
+    _download({"action": "worker_burnin_srt", "id": src_id,
+               "subs": job.get("subs") or "original"}, src_srt)
 
     # 3) burn-in (s nastavením z webu a hlášením progresu enkódování 40..90 %)
     opts = job.get("opts") or {}

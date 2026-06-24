@@ -147,6 +147,8 @@
         </div>
 
         <div class="ae-tab-panel" data-panel="0" role="tabpanel">
+          <label class="ae-row"><span>Titulky</span>
+            <select id="aeSubs"><option value="original">originál</option></select></label>
           <label class="ae-row"><span>Velikost písma (px)</span>
             <input id="aeSize" type="number" value="80" min="8" max="400" step="2"></label>
           <label class="ae-row"><span>Znaků na řádek</span>
@@ -224,6 +226,8 @@
     <div id="burninModal" class="ae-overlay hidden">
       <div class="ae-box">
         <div class="ae-title">🎞 Zapéct titulky do videa</div>
+        <label class="ae-row"><span>Titulky</span>
+          <select id="biSubs"><option value="original">originál</option></select></label>
         <label class="ae-row"><span>Font</span>
           <select id="biFont">
             <option>Arial</option><option>Verdana</option><option>Tahoma</option>
@@ -281,6 +285,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>

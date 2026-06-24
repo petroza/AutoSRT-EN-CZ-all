@@ -272,10 +272,20 @@ case 'request_burnin':
         'bold'    => ((string)($_POST['bold'] ?? '0')) === '1',
     ];
 
+    // které titulky zapéct: 'original' nebo cílový jazyk dokončeného překladu
+    $subs = (string)($_POST['subs'] ?? 'original');
+    if ($subs !== 'original') {
+        $t = preg_replace('/[^A-Za-z-]/', '', $subs);
+        if (!in_array($subs, TRANSLATE_TARGETS, true)
+            || !is_file(OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt')) {
+            jsend(['error' => 'Překlad titulků není k dispozici'], 400);
+        }
+    }
+
     $bid = 'bi_' . clean_id($j['id']);
     $bi = [
         'id' => $bid, 'type' => 'burnin', 'source_id' => $j['id'],
-        'ext' => $j['ext'], 'filename' => $j['filename'],
+        'ext' => $j['ext'], 'filename' => $j['filename'], 'subs' => $subs,
         'owner' => current_user(), 'opts' => $opts,
         'status' => 'pending', 'progress' => 0,
         'created_at' => now(), 'updated_at' => now(),
@@ -385,6 +395,7 @@ case 'worker_claim':
         $payload['ext']       = $picked['ext'];
         $payload['filename']  = $picked['filename'];
         $payload['opts']      = $picked['opts'] ?? null;
+        $payload['subs']      = $picked['subs'] ?? 'original';
     } elseif ($jtype === 'translate') {
         $payload['source_id'] = $picked['source_id'];
         $payload['target']    = $picked['target'];
@@ -416,6 +427,12 @@ case 'worker_burnin_srt':
     $j = load_job((string)($_GET['id'] ?? ''));
     if (!$j) jsend(['error' => 'Job nenalezen'], 404);
     $path = OUT_DIR . '/' . clean_id($j['id']) . '.srt';
+    $subs = (string)($_GET['subs'] ?? 'original');
+    if ($subs !== 'original' && in_array($subs, TRANSLATE_TARGETS, true)) {
+        $t = preg_replace('/[^A-Za-z-]/', '', $subs);
+        $tp = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt';
+        if (is_file($tp)) $path = $tp;   // zapéct přeložené titulky
+    }
     if (!is_file($path)) jsend(['error' => 'SRT nenalezeno'], 404);
     header('Content-Type: application/x-subrip; charset=utf-8');
     header('Content-Length: ' . filesize($path));
