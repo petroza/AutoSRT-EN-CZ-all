@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -92,7 +92,10 @@
           </div>
           <div id="preview" class="preview muted">Vyber zakázku ze seznamu.</div>
           <div id="burninSection" class="burnin-section hidden">
-            <div id="burninMsg" class="status-line"></div>
+            <div class="burnin-info">
+              <div id="burninMsg" class="status-line"></div>
+              <div id="burninProg" class="upprog hidden"><i id="burninBar"></i></div>
+            </div>
             <a id="burninDownload" class="btn small hidden" download>⬇ Stáhnout MP4</a>
           </div>
         </div>
@@ -208,6 +211,40 @@
     </div>
   </div>
 
-  <script src="app.js?v=8"></script>
+    <!-- NASTAVENÍ ZAPÉKÁNÍ TITULKŮ DO VIDEA -->
+    <div id="burninModal" class="ae-overlay hidden">
+      <div class="ae-box">
+        <div class="ae-title">🎞 Zapéct titulky do videa</div>
+        <label class="ae-row"><span>Font</span>
+          <select id="biFont">
+            <option>Arial</option><option>Verdana</option><option>Tahoma</option>
+            <option>Calibri</option><option>Segoe UI</option><option>Times New Roman</option>
+            <option>Georgia</option><option>Impact</option><option>Courier New</option>
+          </select></label>
+        <label class="ae-row"><span>Velikost písma</span>
+          <input id="biSize" type="number" value="24" min="8" max="80"></label>
+        <div class="ae-row"><span>Pozice</span>
+          <span class="ae-radios">
+            <label><input type="radio" name="biPos" value="2" checked> dole</label>
+            <label><input type="radio" name="biPos" value="5"> uprostřed</label>
+            <label><input type="radio" name="biPos" value="8"> nahoře</label>
+          </span></div>
+        <label class="ae-row"><span>Výška od kraje (px)</span>
+          <input id="biMargin" type="number" value="36" min="0" max="400"></label>
+        <label class="ae-row"><span>Znaků na řádek</span>
+          <input id="biChars" type="number" value="42" min="10" max="120"></label>
+        <label class="ae-row"><span>Tučně</span>
+          <span class="ae-radios"><label><input type="checkbox" id="biBold"> tučné písmo</label></span></label>
+        <div id="biMsg" class="status-line"></div>
+        <div class="ae-actions">
+          <button id="biStart" class="btn small primary">Spustit zapékání</button>
+          <button id="biClose" class="btn small ghost">Zavřít</button>
+        </div>
+        <div class="ae-hint">Worker vyrenderuje MP4 s vypálenými titulky (H.264). U dlouhých/4K videí
+          to chvíli trvá — průběh uvidíš na liště. Font musí být nainstalovaný na PC s workerem.</div>
+      </div>
+    </div>
+
+  <script src="app.js?v=9"></script>
 </body>
 </html>

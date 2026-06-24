@@ -485,9 +485,17 @@ $("#aeRes").addEventListener("change", () => {
 /* =====================  ZAPÉKÁNÍ TITULKŮ  ===================== */
 async function requestBurnin() {
   const j = window.curJob; if (!j) return;
+  $("#burninModal").classList.add("hidden");
   setMsg("burninMsg", "Odesílám požadavek na zapékání…", "");
   $("#burninDownload").classList.add("hidden");
-  const fd = new FormData(); fd.append("id", j.id);
+  const fd = new FormData();
+  fd.append("id", j.id);
+  fd.append("font", $("#biFont").value);
+  fd.append("size", $("#biSize").value);
+  fd.append("pos", (document.querySelector('input[name=biPos]:checked') || {}).value || "2");
+  fd.append("margin", $("#biMargin").value);
+  fd.append("chars", $("#biChars").value);
+  fd.append("bold", $("#biBold").checked ? "1" : "0");
   try {
     await api("request_burnin", { method: "POST", body: fd });
     pollBurnin();
@@ -505,24 +513,31 @@ async function pollBurnin() {
   } catch (e) { /* tiché selhání při pollingu */ }
 }
 function updateBurninUI(bi) {
-  const sec = $("#burninSection"), dl = $("#burninDownload");
+  const sec = $("#burninSection"), dl = $("#burninDownload"), pr = $("#burninProg"), bar = $("#burninBar");
   if (!bi) { sec.classList.add("hidden"); return; }
   sec.classList.remove("hidden");
   dl.classList.add("hidden");
   if (bi.status === "done") {
     setMsg("burninMsg", "✓ Video se zapečenými titulky je připraveno.", "ok");
-    dl.href = API + "?action=download_burnin&id=" + (window.curJob && window.curJob.id);
+    pr.classList.add("hidden");
+    dl.href = API + "?action=download_burnin&id=" + (window.curJob && window.curJob.id) + "&t=" + Date.now();
     dl.classList.remove("hidden");
   } else if (bi.status === "error") {
     setMsg("burninMsg", "Chyba zapékání: " + (bi.error || "neznámá"), "err");
+    pr.classList.add("hidden");
   } else if (bi.status === "outdated") {
     setMsg("burninMsg", "Video zastaralé – titulky byly upraveny. Klikni znovu na 🎞 Zapéct.", "");
+    pr.classList.add("hidden");
   } else {
     const STXT = { pending: "Ve frontě na zapékání…", burning: "Zapékám titulky…", processing: "Zpracovávám…" };
     setMsg("burninMsg", (STXT[bi.status] || bi.status) + " (" + (bi.progress || 0) + " %)", "");
+    pr.classList.remove("hidden");
+    bar.style.width = (bi.progress || 0) + "%";
   }
 }
-$("#btnBurnin").addEventListener("click", requestBurnin);
+$("#btnBurnin").addEventListener("click", function () { $("#biMsg").textContent = ""; $("#burninModal").classList.remove("hidden"); });
+$("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
+$("#biStart").addEventListener("click", requestBurnin);
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }

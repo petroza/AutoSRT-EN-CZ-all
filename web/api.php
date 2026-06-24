@@ -191,11 +191,23 @@ case 'request_burnin':
     $src = UP_DIR . '/' . clean_id($j['id']) . '.' . clean_ext($j['ext'] ?? '');
     if (!is_file($src)) jsend(['error' => 'Původní video již není k dispozici'], 400);
 
+    // nastavení vzhledu titulků (font/velikost/pozice/výška/zalomení/tučně)
+    $font = preg_replace('/[^A-Za-z0-9 ]/', '', (string)($_POST['font'] ?? 'Arial'));
+    $align = (int)($_POST['pos'] ?? 2);
+    $opts = [
+        'font'    => ($font !== '' ? substr($font, 0, 40) : 'Arial'),
+        'size'    => max(8, min(120, (int)($_POST['size'] ?? 24))),
+        'align'   => in_array($align, [2, 5, 8], true) ? $align : 2,
+        'marginv' => max(0, min(600, (int)($_POST['margin'] ?? 36))),
+        'chars'   => max(0, min(120, (int)($_POST['chars'] ?? 42))),
+        'bold'    => ((string)($_POST['bold'] ?? '0')) === '1',
+    ];
+
     $bid = 'bi_' . clean_id($j['id']);
     $bi = [
         'id' => $bid, 'type' => 'burnin', 'source_id' => $j['id'],
         'ext' => $j['ext'], 'filename' => $j['filename'],
-        'owner' => current_user(),
+        'owner' => current_user(), 'opts' => $opts,
         'status' => 'pending', 'progress' => 0,
         'created_at' => now(), 'updated_at' => now(),
         'finished_at' => null, 'error' => null,
@@ -231,8 +243,20 @@ case 'worker_claim':
     $picked = null;
     $jobs = array_reverse(all_jobs()); // nejstarší pending první
     foreach ($jobs as $j) {
-        $st = $j['status'] ?? '';
-        if ($st === 'pending') { $picked = $j; break; }
+        if (($j['status'] ?? '') === 'pending') { $picked = $j; break; }
+    }
+    // nic nečeká? znovu zařaď osiřelé joby (worker spadl při zpracování) –
+    // processing/burning starší než 10 minut.
+    if (!$picked) {
+        $nowts = time();
+        foreach ($jobs as $j) {
+            $st = $j['status'] ?? '';
+            if (($st === 'processing' || $st === 'burning')
+                && ($nowts - strtotime($j['updated_at'] ?? '1970-01-01 00:00:00')) > 600) {
+                $picked = $j;
+                break;
+            }
+        }
     }
     if (!$picked) jsend(['job' => null]);
     $picked['status'] = 'processing';
@@ -245,6 +269,7 @@ case 'worker_claim':
         $payload['source_id'] = $picked['source_id'];
         $payload['ext']       = $picked['ext'];
         $payload['filename']  = $picked['filename'];
+        $payload['opts']      = $picked['opts'] ?? null;
     } else {
         $payload['filename'] = $picked['filename'];
         $payload['ext']      = $picked['ext'];

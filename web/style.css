@@ -159,7 +159,9 @@ select:focus,input:focus{border-color:var(--accent)}
 
 /* burnin sekce */
 .burnin-section{padding:8px 0 2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:8px}
-.burnin-section .status-line{margin-top:0;flex:1}
+.burnin-section .status-line{margin-top:0}
+.burnin-info{flex:1;min-width:0}
+.burnin-info .upprog{margin-top:6px}
 .ae-preview{margin-top:12px;max-height:190px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
 .ae-prev-head{padding:5px 10px;font-size:11px;font-weight:700;color:var(--txt-dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
 .ae-prev-table{width:100%;border-collapse:collapse;font-size:11px}

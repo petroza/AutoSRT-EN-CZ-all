@@ -146,12 +146,20 @@ def process_burnin(job):
     progress(jid, "burning", 25)
     _download({"action": "worker_burnin_srt", "id": src_id}, src_srt)
 
-    # 3) burn-in
-    progress(jid, "burning", 40)
-    ffmpeg_tools.burn_subtitles(src_video, src_srt, out_mp4)
+    # 3) burn-in (s nastavením z webu a hlášením progresu enkódování 40..90 %)
+    opts = job.get("opts") or {}
+    _last = {"p": 0}
+
+    def _cb(pct):
+        mapped = 40 + int(pct * 0.5)          # enkódování 0..100 -> job 40..90
+        if mapped - _last["p"] >= 4 or pct >= 100:   # throttle: ~à 4 %
+            _last["p"] = mapped
+            progress(jid, "burning", mapped)
+
+    ffmpeg_tools.burn_subtitles(src_video, src_srt, out_mp4, opts=opts, progress_cb=_cb)
 
     # 4) nahraj výsledné video zpět
-    progress(jid, "burning", 90)
+    progress(jid, "burning", 92)
     with open(out_mp4, "rb") as fh:
         rr = requests.post(API, params={"action": "worker_burnin_result"},
                            headers=HEAD,

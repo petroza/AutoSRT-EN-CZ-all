@@ -9,6 +9,7 @@ Práce s ffmpeg / ffprobe:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import wave
 from pathlib import Path
@@ -158,14 +159,53 @@ def get_video_fps(path: Union[str, Path], log: LogFn = None) -> Optional[float]:
     return None
 
 
+def _wrap_line(text: str, chars: int, max_lines: int = 2) -> str:
+    """Zalomí text na řádky do `chars` znaků (po slovech), max `max_lines` řádků."""
+    words = (text or "").split()
+    lines, cur = [], ""
+    for w in words:
+        if not cur:
+            cur = w
+        elif len(cur) + 1 + len(w) <= chars:
+            cur += " " + w
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        head = lines[:max_lines - 1]
+        head.append(" ".join(lines[max_lines - 1:]))
+        lines = head
+    return "\n".join(lines)
+
+
+def _rewrap_srt(srt_text: str, chars: int) -> str:
+    """Přepíše každý titulek v SRT tak, aby měl max `chars` znaků na řádek."""
+    import re as _re
+    blocks = _re.split(r"\r?\n\s*\r?\n", (srt_text or "").strip())
+    out = []
+    for b in blocks:
+        lines = b.splitlines()
+        if len(lines) >= 3 and "-->" in lines[1]:
+            text = " ".join(l.strip() for l in lines[2:] if l.strip())
+            out.append(lines[0] + "\n" + lines[1] + "\n" + _wrap_line(text, chars))
+        elif b.strip():
+            out.append(b)
+    return "\n\n".join(out) + "\n"
+
+
 def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
-                   output_path: Union[str, Path], log: LogFn = None) -> Path:
+                   output_path: Union[str, Path], opts: Optional[dict] = None,
+                   progress_cb: Optional[Callable[[int], None]] = None,
+                   log: LogFn = None) -> Path:
     """
-    Zapéct SRT titulky do videa. Výsledek je H.264/AAC MP4.
-    Na Windows se SRT překopíruje do WORK aby se vyhnulo problémům
-    s cestami obsahujícími dvojtečku (drive letter).
+    Zapéct SRT titulky do videa (H.264/AAC MP4). opts: font, size, align
+    (2=dole,5=uprostřed,8=nahoře), marginv, chars (zalomení), bold.
+    progress_cb(pct 0-100) hlásí průběh enkódování.
     """
     import shutil
+    opts = opts or {}
     ffmpeg = config.find_ffmpeg()
     if not ffmpeg:
         raise FfmpegError("ffmpeg nebyl nalezen.")
@@ -175,45 +215,84 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # SRT zkopírujeme vedle výstupního souboru — cesta k výstupu je vždy
-    # čistá (bez apostrofů), takže ji ffmpeg subtitle filtr správně zparsuje.
+    # nastavení stylu
+    font = re.sub(r"[^A-Za-z0-9 ]", "", str(opts.get("font", "Arial"))) or "Arial"
+    size = max(8, min(200, int(opts.get("size", 24))))
+    align = int(opts.get("align", 2))
+    if align not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+        align = 2
+    marginv = max(0, min(800, int(opts.get("marginv", 36))))
+    bold = -1 if opts.get("bold") else 0
+    outline = max(1, round(size / 12))
+    chars = int(opts.get("chars", 0) or 0)
+    style = (f"FontName={font},FontSize={size},PrimaryColour=&H00FFFFFF,"
+             f"OutlineColour=&H00000000,BorderStyle=1,Outline={outline},Shadow=0,"
+             f"Bold={bold},Alignment={align},MarginV={marginv}")
+
+    # SRT (případně přezalomené) dáme vedle výstupu a ffmpeg pustíme s cwd
+    # ve složce SRT + relativní název (Windows neumí dvojtečku disku ve filtru).
     tmp_srt = output_path.with_suffix(".tmp.srt")
+    src_text = srt_path.read_text(encoding="utf-8", errors="replace")
+    if chars and chars >= 10:
+        src_text = _rewrap_srt(src_text, chars)
+    tmp_srt.write_text(src_text, encoding="utf-8")
+    work_dir = tmp_srt.parent
+    srt_rel = tmp_srt.name
+
+    total = get_audio_duration(video_path) or 0.0
+    cmd = [
+        str(ffmpeg), "-y", "-i", str(video_path),
+        "-vf", f"subtitles={srt_rel}:force_style='{style}'",
+        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+        "-progress", "pipe:1", "-nostats", str(output_path),
+    ]
+    _log(log, f"FFMPEG burn-in (cwd={work_dir}): " + " ".join(cmd))
+
+    err_path = output_path.with_suffix(".tmp.err")
+    rc = 1
     try:
-        shutil.copy2(srt_path, tmp_srt)
-        # POZOR (Windows): ffmpeg subtitles filtr neumí dvojtečku v cestě
-        # (C:/, O:/ ...). Proto spustíme ffmpeg s pracovním adresářem ve
-        # složce SRT a ve filtru použijeme jen RELATIVNÍ název (bez dvojtečky).
-        work_dir = tmp_srt.parent
-        srt_rel = tmp_srt.name
-
-        cmd = [
-            str(ffmpeg), "-y",
-            "-i", str(video_path),
-            "-vf", f"subtitles={srt_rel}:force_style="
-                   "'FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,"
-                   "OutlineColour=&H00000000,Outline=2,Bold=0,Alignment=2'",
-            "-c:v", "libx264", "-crf", "23", "-preset", "fast",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
-            str(output_path),
-        ]
-        _log(log, f"FFMPEG burn-in (cwd={work_dir}): " + " ".join(cmd))
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace",
-                              cwd=str(work_dir), **_popen_kwargs())
+        with open(err_path, "w", encoding="utf-8", errors="replace") as errf:
+            proc = subprocess.Popen(
+                cmd, cwd=str(work_dir), stdout=subprocess.PIPE, stderr=errf,
+                text=True, encoding="utf-8", errors="replace", **_popen_kwargs())
+            last = -1
+            for line in proc.stdout:
+                line = line.strip()
+                us = None
+                if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+                    val = line.split("=", 1)[1]
+                    if val.isdigit():
+                        us = int(val) / (1e6 if "us=" in line else 1e3)
+                if us is not None and total > 0 and progress_cb:
+                    pct = max(0, min(99, int(us / total * 100)))
+                    if pct != last:
+                        last = pct
+                        progress_cb(pct)
+            proc.wait()
+            rc = proc.returncode
     finally:
-        try:
-            tmp_srt.unlink(missing_ok=True)
-        except Exception:
-            pass
+        for p in (tmp_srt,):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-    if proc.returncode != 0:
-        tail = (proc.stderr or "").strip().splitlines()[-20:]
+    err = ""
+    try:
+        err = err_path.read_text(encoding="utf-8", errors="replace")
+        err_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    if rc != 0:
+        tail = (err or "").strip().splitlines()[-20:]
         _log(log, "FFMPEG chyba:\n" + "\n".join(tail))
         raise FfmpegError(
-            f"ffmpeg burn-in selhal (kód {proc.returncode}). Detail v logu jobu."
-        )
+            f"ffmpeg burn-in selhal (kód {rc}). Detail v logu jobu.")
     if not output_path.is_file() or output_path.stat().st_size == 0:
         raise FfmpegError("ffmpeg nevytvořil výstupní video (prázdný soubor).")
+    if progress_cb:
+        progress_cb(100)
     _log(log, f"Burn-in hotov: {output_path.name} ({output_path.stat().st_size // 1024} kB)")
     return output_path
