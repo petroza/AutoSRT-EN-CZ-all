@@ -1,0 +1,162 @@
+<?php
+require_once __DIR__ . '/config.php';
+
+function ensure_dirs(): void {
+    foreach ([DATA_DIR, UP_DIR, OUT_DIR, JOB_DIR] as $d) {
+        if (!is_dir($d)) @mkdir($d, 0775, true);
+    }
+}
+
+function jsend($data, int $code = 200): void {
+    http_response_code($code);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function start_sess(): void {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_name('TITKOV');
+        @session_start();
+    }
+}
+
+function is_logged_in(): bool {
+    start_sess();
+    return !empty($_SESSION['auth']);
+}
+
+function require_login(): void {
+    if (!is_logged_in()) jsend(['error' => 'Nepřihlášeno'], 401);
+}
+
+function require_worker(): void {
+    $tok = $_SERVER['HTTP_X_WORKER_TOKEN'] ?? ($_REQUEST['token'] ?? '');
+    if (!is_string($tok) || !hash_equals(WORKER_TOKEN, $tok)) {
+        jsend(['error' => 'Neplatný worker token'], 403);
+    }
+}
+
+// Ověří jméno+heslo proti USERS, vrátí ['user'=>..,'role'=>..] nebo null.
+function find_user(string $u, string $p): ?array {
+    foreach (USERS as $name => $info) {
+        // porovnání v konstantním čase, odolné proti časovému útoku
+        if (hash_equals($name, $u) && hash_equals((string)$info['pass'], $p)) {
+            return ['user' => $name, 'role' => $info['role']];
+        }
+    }
+    return null;
+}
+
+function current_user(): ?string { start_sess(); return $_SESSION['user'] ?? null; }
+function current_role(): string  { start_sess(); return $_SESSION['role'] ?? ''; }
+function is_admin(): bool         { return current_role() === 'admin'; }
+
+// Admin vidí vše; běžný uživatel jen svoje zakázky.
+function can_access(array $job): bool {
+    if (!is_logged_in()) return false;
+    if (is_admin()) return true;
+    return ($job['owner'] ?? '') === current_user();
+}
+
+function clean_id(string $id): string {
+    return preg_replace('/[^a-f0-9]/', '', $id);
+}
+
+function clean_ext(string $ext): string {
+    $ext = strtolower(preg_replace('/[^a-z0-9]/i', '', $ext));
+    return in_array($ext, ALLOWED_EXT, true) ? $ext : '';
+}
+
+function job_path(string $id): string {
+    return JOB_DIR . '/' . clean_id($id) . '.json';
+}
+
+function load_job(string $id): ?array {
+    $p = job_path($id);
+    if (!is_file($p)) return null;
+    $j = json_decode((string)file_get_contents($p), true);
+    return is_array($j) ? $j : null;
+}
+
+function save_job(array $job): void {
+    file_put_contents(job_path($job['id']),
+        json_encode($job, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+}
+
+function all_jobs(): array {
+    $out = [];
+    foreach (glob(JOB_DIR . '/*.json') as $f) {
+        $j = json_decode((string)file_get_contents($f), true);
+        if (is_array($j)) $out[] = $j;
+    }
+    usort($out, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
+    return $out;
+}
+
+function delete_job_files(array $job): void {
+    $id = clean_id($job['id']);
+    $ext = clean_ext($job['ext'] ?? '');
+    if ($ext) @unlink(UP_DIR . '/' . $id . '.' . $ext);
+    foreach (OUT_FORMATS as $fmt) @unlink(OUT_DIR . '/' . $id . '.' . $fmt);
+    @unlink(job_path($id));
+}
+
+function new_id(): string {
+    return bin2hex(random_bytes(6));
+}
+
+// --- generátory titulků (pro regeneraci po ručních úpravách v editoru) ---
+function ts_fmt(float $sec, string $sep): string {
+    if ($sec < 0) $sec = 0.0;
+    $ms = (int)round($sec * 1000);
+    $h = intdiv($ms, 3600000); $ms %= 3600000;
+    $m = intdiv($ms, 60000);   $ms %= 60000;
+    $s = intdiv($ms, 1000);    $ms %= 1000;
+    return sprintf('%02d:%02d:%02d%s%03d', $h, $m, $s, $sep, $ms);
+}
+
+function gen_srt(array $segs): string {
+    $out = []; $i = 1;
+    foreach ($segs as $s) {
+        $out[] = (string)$i++;
+        $out[] = ts_fmt((float)($s['start'] ?? 0), ',') . ' --> ' . ts_fmt((float)($s['end'] ?? 0), ',');
+        $out[] = trim((string)($s['text'] ?? ''));
+        $out[] = '';
+    }
+    return rtrim(implode("\n", $out)) . "\n";
+}
+
+function gen_vtt(array $segs): string {
+    $out = ['WEBVTT', ''];
+    foreach ($segs as $s) {
+        $out[] = ts_fmt((float)($s['start'] ?? 0), '.') . ' --> ' . ts_fmt((float)($s['end'] ?? 0), '.');
+        $out[] = trim((string)($s['text'] ?? ''));
+        $out[] = '';
+    }
+    return rtrim(implode("\n", $out)) . "\n";
+}
+
+function now(): string {
+    return date('Y-m-d H:i:s');
+}
+
+// Veřejná (do UI/JSON) podoba jobu - bez interních cest.
+function public_job(array $j): array {
+    return [
+        'id'           => $j['id'] ?? '',
+        'filename'     => $j['filename'] ?? '',
+        'owner'        => $j['owner'] ?? '',
+        'language'     => $j['language'] ?? 'auto',
+        'formats'      => $j['formats'] ?? OUT_FORMATS,
+        'status'       => $j['status'] ?? 'pending',
+        'progress'     => (int)($j['progress'] ?? 0),
+        'created_at'   => $j['created_at'] ?? '',
+        'finished_at'  => $j['finished_at'] ?? null,
+        'error'        => $j['error'] ?? null,
+        'duration'     => $j['duration'] ?? 0,
+        'text_preview' => $j['text_preview'] ?? '',
+        'outputs'      => $j['outputs'] ?? [],
+        'size'         => (int)($j['size'] ?? 0),
+    ];
+}

@@ -1,0 +1,9 @@
+# Nikdy nepouštět přímý přístup k datům (uploads/outputs/jobs).
+# Vše jde jen přes api.php s přihlášením / worker tokenem.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

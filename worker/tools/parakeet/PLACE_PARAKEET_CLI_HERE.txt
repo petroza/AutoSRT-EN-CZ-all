@@ -1,0 +1,20 @@
+Sem dej spustitelný soubor parakeet.cpp:  parakeet-cli.exe
+
+Stáhni předkompilovaný Windows build (CPU, případně Vulkan/CUDA) z:
+  https://github.com/mudler/parakeet.cpp/releases
+
+Rozbal tak, aby tu byl soubor:
+  parakeet-cli.exe
+
+(Může být i v podsložce, např. tools/parakeet/build/... - aplikace ho
+najde rekurzivně. Doporučeno ale dát .exe přímo sem.)
+
+Rychlý test ve složce s modelem:
+  parakeet-cli.exe transcribe --model ..\..\models\<model>.gguf --input test.wav --json
+
+Build ze zdrojáků (volitelné, vyžaduje CMake + MSVC):
+  git clone https://github.com/mudler/parakeet.cpp
+  cd parakeet.cpp
+  cmake -B build
+  cmake --build build -j
+  REM výsledek: build\examples\cli\parakeet-cli.exe

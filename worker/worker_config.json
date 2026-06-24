@@ -1,0 +1,5 @@
+{
+  "base_url": "https://www.priklad.cz/titulkovac/",
+  "worker_token": "ZMEN_NA_VLASTNI_TAJNY_TOKEN",
+  "poll_interval_sec": 5
+}

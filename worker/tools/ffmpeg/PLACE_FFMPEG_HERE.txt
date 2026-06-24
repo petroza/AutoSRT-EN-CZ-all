@@ -1,0 +1,13 @@
+Sem dej ffmpeg.exe a ffprobe.exe (pokud nemáš ffmpeg v systémové PATH).
+
+Stáhni "release essentials" build z:
+  https://www.gyan.dev/ffmpeg/builds/
+nebo:
+  https://github.com/BtbN/FFmpeg-Builds/releases
+
+Z archivu zkopíruj do této složky:
+  ffmpeg.exe
+  ffprobe.exe
+
+Aplikace je použije přednostně před systémovou PATH.
+ffmpeg slouží k převodu videa/audia na WAV 16 kHz mono PCM pro ASR.

@@ -1,0 +1,9 @@
+# PZ Titulkovač - kořen webu
+Options -Indexes
+DirectoryIndex index.php
+
+# konfiguraci a knihovny nikdy neservírovat jako text
+<FilesMatch "(config|lib)\.php$">
+  # config.php/lib.php se normálně includují, přímý přístup nevadí (jsou to PHP),
+  # ale pro jistotu povolíme jen include (přímé zobrazení vrátí prázdno).
+</FilesMatch>

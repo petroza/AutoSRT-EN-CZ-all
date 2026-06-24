@@ -1,0 +1,23 @@
+Sem dej GGUF model pro parakeet.cpp.
+
+DOPORUČENO pro offline přepis souborů (nejpřesnější čeština, 25 EU jazyků):
+  tdt-0.6b-v3-q8_0.gguf
+
+Stáhni z:
+  https://huggingface.co/mudler/parakeet-cpp-gguf
+
+Varianty tdt-0.6b-v3 (menší/rychlejší -> kvalitnější):
+  tdt-0.6b-v3-q4_k.gguf   (nejmenší)
+  tdt-0.6b-v3-q5_k.gguf
+  tdt-0.6b-v3-q8_0.gguf   (DOPORUČENO - skvělý poměr přesnost/velikost)
+  tdt-0.6b-v3-f16.gguf    (maximální kvalita, ~1.4 GB)
+
+Stačí JEDEN soubor .gguf v této složce - aplikace si ho najde sama
+(priorita: tdt-0.6b-v3 > ostatní; pořadí je v backend/config.py).
+
+Pro BUDOUCÍ živý mikrofon je vhodnější streaming model (nízká latence):
+  nemotron-3.5-asr-streaming-0.6b-q5_k.gguf
+U offline přepisu souborů je ale méně přesný, proto je doporučen tdt-0.6b-v3.
+
+Stažení přes huggingface-cli (volitelné):
+  huggingface-cli download mudler/parakeet-cpp-gguf tdt-0.6b-v3-q8_0.gguf --local-dir .

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PZ ASR Studio</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◢◣</span>
+      <div class="brand-txt">
+        <h1>PZ ASR&nbsp;Studio</h1>
+        <p class="tagline">Lokální offline přepis · parakeet.cpp · CPU</p>
+      </div>
+    </div>
+    <div id="diag" class="diag" title="Diagnostika backendu">
+      <span class="pill" data-k="python">Python</span>
+      <span class="pill" data-k="ffmpeg">ffmpeg</span>
+      <span class="pill" data-k="parakeet">parakeet.cpp</span>
+      <span class="pill" data-k="model">model</span>
+      <span class="pill ok" data-k="cpu">CPU</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEVÝ SLOUPEC -->
+    <section class="col col-left">
+      <div class="card">
+        <h2><span class="step">1</span> Vstup</h2>
+        <div id="dropzone" class="dropzone">
+          <input type="file" id="fileInput" hidden
+                 accept=".wav,.mp3,.mp4,.mov,.m4a,.mkv,.aac,.flac,.ogg,.opus,.webm,.avi">
+          <div class="dz-inner">
+            <div class="dz-icon">⤓</div>
+            <p class="dz-title">Přetáhni soubor sem</p>
+            <p class="dz-sub">nebo klikni · WAV · MP3 · MP4 · MOV · M4A · MKV</p>
+          </div>
+        </div>
+        <div id="fileInfo" class="file-info hidden"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">2</span> Nastavení</h2>
+        <label class="field">
+          <span>Jazyk</span>
+          <select id="language">
+            <option value="auto">Auto (detekce)</option>
+            <option value="cs-CZ" selected>Čeština · cs-CZ</option>
+            <option value="en-US">Angličtina · en-US</option>
+            <option value="uk-UA">Ukrajinština · uk-UA</option>
+          </select>
+        </label>
+        <div class="field">
+          <span>Výstupy</span>
+          <div class="checks" id="formats">
+            <label><input type="checkbox" value="txt" checked> TXT</label>
+            <label><input type="checkbox" value="srt" checked> SRT</label>
+            <label><input type="checkbox" value="vtt" checked> VTT</label>
+            <label><input type="checkbox" value="json" checked> JSON</label>
+          </div>
+        </div>
+        <button id="btnTranscribe" class="btn primary" disabled>Přepsat</button>
+      </div>
+
+      <div class="card">
+        <h2><span class="step">3</span> Průběh</h2>
+        <div class="progress"><div id="progressBar" class="bar"></div></div>
+        <div id="statusLine" class="status-line">— čeká na vstup —</div>
+        <pre id="log" class="log"></pre>
+      </div>
+    </section>
+
+    <!-- PRAVÝ SLOUPEC -->
+    <section class="col col-right">
+      <div class="card grow">
+        <div class="card-head">
+          <h2>Náhled přepisu</h2>
+          <div id="downloads" class="downloads hidden">
+            <a class="btn small" id="dlTxt" target="_blank">TXT</a>
+            <a class="btn small" id="dlSrt" target="_blank">SRT</a>
+            <a class="btn small" id="dlVtt" target="_blank">VTT</a>
+            <a class="btn small" id="dlJson" target="_blank">JSON</a>
+          </div>
+        </div>
+        <div id="preview" class="preview muted">Zatím žádný přepis.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Historie</h2>
+          <button id="btnRefresh" class="btn small ghost" title="Obnovit">↻</button>
+        </div>
+        <ul id="history" class="history"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    PZ ASR Studio · 100&nbsp;% lokálně · žádný cloud · audio neopouští tvůj počítač
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

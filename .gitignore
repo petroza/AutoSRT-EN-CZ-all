@@ -1,0 +1,26 @@
+# Python / venv / cache
+__pycache__/
+*.pyc
+.venv/
+worker_tmp/
+_php/
+
+# Binárky a modely (stahují se zvlášť - viz README)
+*.gguf
+*.exe
+*.dll
+
+# Běhová data (placeholdery .gitkeep zůstávají)
+uploads/*
+outputs/*
+jobs/*
+logs/*
+data/uploads/*
+data/outputs/*
+data/jobs/*
+!**/.gitkeep
+
+# Lokální/citlivá konfigurace (commitnuté jsou jen vzory s placeholdery)
+# Pokud si chceš držet vlastní hodnoty mimo git, odkomentuj:
+# worker/worker_config.json
+# web/config.php
