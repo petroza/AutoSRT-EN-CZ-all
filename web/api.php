@@ -162,7 +162,7 @@ case 'save_edits':
     $bi = load_burnin_job($id);
     if ($bi && in_array($bi['status'], ['done', 'error'], true)) {
         $bi['status'] = 'outdated';
-        save_job($bi);
+        save_burnin_job($bi);
     }
     $j['text_preview'] = function_exists('mb_substr') ? mb_substr($text, 0, 20000) : substr($text, 0, 20000);
     $j['edited'] = true;
@@ -175,7 +175,7 @@ case 'delete':
     $j = load_job((string)($_REQUEST['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
     // Smaž i případný burnin job
-    $bi = load_burnin_job(clean_id($j['id']));
+    $bi = load_burnin_job($j['id']);
     if ($bi) delete_burnin_files($bi);
     delete_job_files($j);
     jsend(['ok' => true, 'deleted' => $j['id']]);
@@ -200,7 +200,7 @@ case 'request_burnin':
         'created_at' => now(), 'updated_at' => now(),
         'finished_at' => null, 'error' => null,
     ];
-    save_job($bi);
+    save_burnin_job($bi);
     jsend(['ok' => true, 'burnin_id' => $bid, 'status' => 'pending']);
 
 // ---------- BURNIN: stav a stažení -----------------------------------------
@@ -208,7 +208,7 @@ case 'burnin_status':
     require_login();
     $j = load_job((string)($_GET['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
-    $bi = load_burnin_job(clean_id($j['id']));
+    $bi = load_burnin_job($j['id']);
     jsend(['burnin' => $bi ? burnin_public($bi) : null]);
 
 case 'download_burnin':
@@ -238,7 +238,7 @@ case 'worker_claim':
     $picked['status'] = 'processing';
     $picked['progress'] = 5;
     $picked['updated_at'] = now();
-    save_job($picked);
+    save_job_any($picked);
     $jtype = $picked['type'] ?? 'transcribe';
     $payload = ['id' => $picked['id'], 'type' => $jtype];
     if ($jtype === 'burnin') {
@@ -281,12 +281,12 @@ case 'worker_burnin_srt':
 
 case 'worker_progress':
     require_worker();
-    $j = load_job((string)($_POST['id'] ?? ''));
+    $j = load_job_flexible((string)($_POST['id'] ?? ''));
     if (!$j) jsend(['error' => 'Job nenalezen'], 404);
     if (isset($_POST['progress'])) $j['progress'] = max(0, min(100, (int)$_POST['progress']));
     if (!empty($_POST['status']))  $j['status'] = (string)$_POST['status'];
     $j['updated_at'] = now();
-    save_job($j);
+    save_job_any($j);
     jsend(['ok' => true]);
 
 case 'worker_result':
@@ -317,7 +317,7 @@ case 'worker_result':
 // Worker nahraje výsledné zapečené video
 case 'worker_burnin_result':
     require_worker();
-    $j = load_job((string)($_POST['id'] ?? ''));
+    $j = load_job_flexible((string)($_POST['id'] ?? ''));
     if (!$j || ($j['type'] ?? '') !== 'burnin') jsend(['error' => 'Burnin job nenalezen'], 404);
     if (empty($_FILES['video']) || !is_uploaded_file($_FILES['video']['tmp_name'] ?? '')) {
         jsend(['error' => 'Chybí video soubor'], 400);
@@ -331,18 +331,18 @@ case 'worker_burnin_result':
     $j['error'] = null;
     $j['finished_at'] = now();
     $j['updated_at'] = now();
-    save_job($j);
+    save_burnin_job($j);
     jsend(['ok' => true]);
 
 case 'worker_fail':
     require_worker();
-    $j = load_job((string)($_POST['id'] ?? ''));
+    $j = load_job_flexible((string)($_POST['id'] ?? ''));
     if (!$j) jsend(['error' => 'Job nenalezen'], 404);
     $j['status'] = 'error';
     $j['error'] = mb_substr((string)($_POST['error'] ?? 'neznámá chyba'), 0, 1000);
     $j['finished_at'] = now();
     $j['updated_at'] = now();
-    save_job($j);
+    save_job_any($j);
     jsend(['ok' => true]);
 
 default:

@@ -519,8 +519,7 @@ function updateBurninUI(bi) {
     setMsg("burninMsg", "Video zastaralé – titulky byly upraveny. Klikni znovu na 🎞 Zapéct.", "");
   } else {
     const STXT = { pending: "Ve frontě na zapékání…", burning: "Zapékám titulky…", processing: "Zpracovávám…" };
-    $("#burninMsg").textContent = (STXT[bi.status] || bi.status) + " (" + (bi.progress || 0) + " %)";
-    $("#burninMsg").className = "status-line";
+    setMsg("burninMsg", (STXT[bi.status] || bi.status) + " (" + (bi.progress || 0) + " %)", "");
   }
 }
 $("#btnBurnin").addEventListener("click", requestBurnin);

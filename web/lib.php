@@ -84,6 +84,22 @@ function save_job(array $job): void {
         json_encode($job, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
 }
 
+function save_burnin_job(array $bi): void {
+    file_put_contents(burnin_job_path($bi['source_id'] ?? ''),
+        json_encode($bi, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+}
+
+function load_job_flexible(string $id): ?array {
+    $j = load_job($id);
+    if ($j) return $j;
+    if (strncmp($id, 'bi_', 3) === 0) return load_burnin_job(substr($id, 3));
+    return null;
+}
+
+function save_job_any(array $j): void {
+    if (($j['type'] ?? '') === 'burnin') save_burnin_job($j); else save_job($j);
+}
+
 function all_jobs(): array {
     $out = [];
     foreach (glob(JOB_DIR . '/*.json') as $f) {
@@ -127,7 +143,7 @@ function burnin_public(array $bi): array {
 function delete_burnin_files(array $bi): void {
     $src_id = clean_id($bi['source_id'] ?? '');
     if ($src_id) @unlink(BURNIN_DIR . '/' . $src_id . '_burned.mp4');
-    @unlink(JOB_DIR . '/bi_' . $src_id . '.json');
+    @unlink(burnin_job_path($src_id));
 }
 
 function new_id(): string {

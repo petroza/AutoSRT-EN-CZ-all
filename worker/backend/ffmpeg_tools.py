@@ -165,7 +165,7 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     Na Windows se SRT překopíruje do WORK aby se vyhnulo problémům
     s cestami obsahujícími dvojtečku (drive letter).
     """
-    import shutil, tempfile
+    import shutil
     ffmpeg = config.find_ffmpeg()
     if not ffmpeg:
         raise FfmpegError("ffmpeg nebyl nalezen.")
@@ -175,12 +175,11 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Kopírujeme SRT do temp složky vedle výstupu — vyhne se problémům
-    # s C:\… cestami ve ffmpeg subtitle filtru na Windows.
-    with tempfile.TemporaryDirectory() as td:
-        tmp_srt = Path(td) / "subs.srt"
+    # SRT zkopírujeme vedle výstupního souboru — cesta k výstupu je vždy
+    # čistá (bez apostrofů), takže ji ffmpeg subtitle filtr správně zparsuje.
+    tmp_srt = output_path.with_suffix(".tmp.srt")
+    try:
         shutil.copy2(srt_path, tmp_srt)
-        # Na Windows ffmpeg očekává lomítko, na Unixu je to jedno.
         srt_ff = str(tmp_srt).replace("\\", "/")
 
         cmd = [
@@ -197,6 +196,11 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
         _log(log, "FFMPEG burn-in: " + " ".join(cmd))
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", **_popen_kwargs())
+    finally:
+        try:
+            tmp_srt.unlink(missing_ok=True)
+        except Exception:
+            pass
 
     if proc.returncode != 0:
         tail = (proc.stderr or "").strip().splitlines()[-20:]
