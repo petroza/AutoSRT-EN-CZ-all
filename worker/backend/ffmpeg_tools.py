@@ -2,7 +2,8 @@
 Práce s ffmpeg / ffprobe:
   - ověření dostupnosti
   - konverze libovolného audia/videa na WAV 16 kHz mono PCM s16le
-  - zjištění délky audia
+  - zjištění délky audia a FPS videa
+  - zapékání SRT titulků do videa
   - logování chyb
 """
 from __future__ import annotations
@@ -130,3 +131,80 @@ def convert_to_wav(input_path: Union[str, Path], output_wav: Union[str, Path],
         raise FfmpegError("ffmpeg nevytvořil výstupní WAV (prázdný soubor).")
     _log(log, f"WAV hotov: {output_wav.name} ({output_wav.stat().st_size} B)")
     return output_wav
+
+
+def get_video_fps(path: Union[str, Path], log: LogFn = None) -> Optional[float]:
+    """Vrátí FPS první video stopy, nebo None pokud nelze zjistit."""
+    path = Path(path)
+    ffprobe = config.find_ffprobe()
+    if not ffprobe:
+        return None
+    try:
+        out = subprocess.run(
+            [str(ffprobe), "-v", "quiet", "-print_format", "json",
+             "-show_streams", "-select_streams", "v:0", str(path)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=30, **_popen_kwargs(),
+        )
+        streams = json.loads(out.stdout or "{}").get("streams", [])
+        if streams:
+            rfr = streams[0].get("r_frame_rate", "")
+            if "/" in rfr:
+                num, den = rfr.split("/")
+                if int(den):
+                    return round(int(num) / int(den), 3)
+    except Exception as e:
+        _log(log, f"ffprobe fps nezjistil: {e}")
+    return None
+
+
+def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
+                   output_path: Union[str, Path], log: LogFn = None) -> Path:
+    """
+    Zapéct SRT titulky do videa. Výsledek je H.264/AAC MP4.
+    Na Windows se SRT překopíruje do WORK aby se vyhnulo problémům
+    s cestami obsahujícími dvojtečku (drive letter).
+    """
+    import shutil, tempfile
+    ffmpeg = config.find_ffmpeg()
+    if not ffmpeg:
+        raise FfmpegError("ffmpeg nebyl nalezen.")
+
+    video_path  = Path(video_path)
+    srt_path    = Path(srt_path)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Kopírujeme SRT do temp složky vedle výstupu — vyhne se problémům
+    # s C:\… cestami ve ffmpeg subtitle filtru na Windows.
+    with tempfile.TemporaryDirectory() as td:
+        tmp_srt = Path(td) / "subs.srt"
+        shutil.copy2(srt_path, tmp_srt)
+        # Na Windows ffmpeg očekává lomítko, na Unixu je to jedno.
+        srt_ff = str(tmp_srt).replace("\\", "/")
+
+        cmd = [
+            str(ffmpeg), "-y",
+            "-i", str(video_path),
+            "-vf", f"subtitles='{srt_ff}':force_style="
+                   "'FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,"
+                   "OutlineColour=&H00000000,Outline=2,Bold=0,Alignment=2'",
+            "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+        _log(log, "FFMPEG burn-in: " + " ".join(cmd))
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", **_popen_kwargs())
+
+    if proc.returncode != 0:
+        tail = (proc.stderr or "").strip().splitlines()[-20:]
+        _log(log, "FFMPEG chyba:\n" + "\n".join(tail))
+        raise FfmpegError(
+            f"ffmpeg burn-in selhal (kód {proc.returncode}). Detail v logu jobu."
+        )
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise FfmpegError("ffmpeg nevytvořil výstupní video (prázdný soubor).")
+    _log(log, f"Burn-in hotov: {output_path.name} ({output_path.stat().st_size // 1024} kB)")
+    return output_path

@@ -55,24 +55,31 @@ def fail(jid, msg):
         pass
 
 
+def _download(url_params: dict, dest: Path) -> None:
+    with requests.get(API, params=url_params, headers=HEAD,
+                      stream=True, timeout=300) as r:
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(1 << 16):
+                if chunk:
+                    f.write(chunk)
+
+
 def process(job):
     jid = job["id"]
     ext = job.get("ext") or "bin"
     lang = job.get("language") or "cs-CZ"
     formats = job.get("formats") or ["txt", "srt", "vtt", "json"]
-    WORK.mkdir(parents=True, exist_ok=True)   # robustně - složka mohla zmizet
+    WORK.mkdir(parents=True, exist_ok=True)
     src = WORK / f"{jid}.{ext}"
     wav = WORK / f"{jid}.16k.wav"
 
     # 1) stáhni zdroj
     progress(jid, "processing", 10)
-    with requests.get(API, params={"action": "worker_source", "id": jid},
-                      headers=HEAD, stream=True, timeout=300) as r:
-        r.raise_for_status()
-        with open(src, "wb") as f:
-            for chunk in r.iter_content(1 << 16):
-                if chunk:
-                    f.write(chunk)
+    _download({"action": "worker_source", "id": jid}, src)
+
+    # detekce FPS (pouze pro video soubory, tiché selhání pro audio)
+    fps = ffmpeg_tools.get_video_fps(src)
 
     # 2) konverze na WAV 16k mono
     progress(jid, "processing", 30)
@@ -101,6 +108,8 @@ def process(job):
                 files[fmt] = (f"{jid}.{fmt}", fh)
         data = {"id": jid, "duration": dur,
                 "text_preview": (result.get("text") or "")[:20000]}
+        if fps is not None:
+            data["fps"] = fps
         rr = requests.post(API, params={"action": "worker_result"}, headers=HEAD,
                            data=data, files=files, timeout=300)
         rr.raise_for_status()
@@ -114,7 +123,50 @@ def process(job):
             p.unlink(missing_ok=True)
         except Exception:
             pass
-    print(f"[OK] {jid} ({job.get('filename')}) hotovo, {dur:.1f}s audia")
+    print(f"[OK] {jid} ({job.get('filename')}) hotovo, {dur:.1f}s audia"
+          + (f", {fps:.3f} fps" if fps else ""))
+
+
+def process_burnin(job):
+    """Zapéct SRT titulky do videa pro daný burnin job."""
+    jid     = job["id"]
+    src_id  = job["source_id"]
+    ext     = job.get("ext") or "mp4"
+    WORK.mkdir(parents=True, exist_ok=True)
+
+    src_video = WORK / f"{jid}_src.{ext}"
+    src_srt   = WORK / f"{jid}_src.srt"
+    out_mp4   = WORK / f"{jid}_burned.mp4"
+
+    # 1) stáhni původní video
+    progress(jid, "burning", 10)
+    _download({"action": "worker_source", "id": src_id}, src_video)
+
+    # 2) stáhni SRT ze zdrojového jobu
+    progress(jid, "burning", 25)
+    _download({"action": "worker_burnin_srt", "id": src_id}, src_srt)
+
+    # 3) burn-in
+    progress(jid, "burning", 40)
+    ffmpeg_tools.burn_subtitles(src_video, src_srt, out_mp4)
+
+    # 4) nahraj výsledné video zpět
+    progress(jid, "burning", 90)
+    with open(out_mp4, "rb") as fh:
+        rr = requests.post(API, params={"action": "worker_burnin_result"},
+                           headers=HEAD,
+                           data={"id": jid},
+                           files={"video": (f"{jid}.mp4", fh)},
+                           timeout=600)
+        rr.raise_for_status()
+
+    # úklid
+    for p in [src_video, src_srt, out_mp4]:
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+    print(f"[BURN] {jid} hotovo")
 
 
 def main():
@@ -138,9 +190,13 @@ def main():
         if not job:
             time.sleep(POLL)
             continue
-        print(f"[JOB] {job['id']} | {job.get('filename')} | {job.get('language')}")
+        jtype = job.get("type", "transcribe")
+        print(f"[JOB] {job['id']} | typ={jtype} | {job.get('filename', job.get('source_id', ''))}")
         try:
-            process(job)
+            if jtype == "burnin":
+                process_burnin(job)
+            else:
+                process(job)
         except Exception as e:
             traceback.print_exc()
             fail(job["id"], str(e))

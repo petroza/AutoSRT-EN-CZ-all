@@ -2,9 +2,11 @@
 // ============================================================
 //  PZ Titulkovač - API
 //  Uživatelské akce (session): login, logout, status, upload,
-//      list, job, download, delete
+//      list, job, download, result, save_edits, delete,
+//      request_burnin, download_burnin
 //  Workerské akce (token):     worker_claim, worker_source,
-//      worker_progress, worker_result, worker_fail
+//      worker_progress, worker_result, worker_fail,
+//      worker_burnin_srt, worker_burnin_result
 // ============================================================
 require_once __DIR__ . '/lib.php';
 ensure_dirs();
@@ -58,7 +60,7 @@ case 'upload':
     }
     $lang = (string)($_POST['language'] ?? 'cs-CZ');
     if (!in_array($lang, LANGUAGES, true)) $lang = 'cs-CZ';
-    $llm = (string)($_POST['llm'] ?? '1') === '1';   // automatická oprava cizích slov (Ollama)
+    $llm = (string)($_POST['llm'] ?? '1') === '1';
     $fmts = array_values(array_filter(
         explode(',', (string)($_POST['formats'] ?? 'txt,srt,vtt,json')),
         fn($f) => in_array($f, OUT_FORMATS, true)
@@ -71,22 +73,12 @@ case 'upload':
         jsend(['error' => 'Nepodařilo se uložit soubor (práva/limit?)'], 500);
     }
     $job = [
-        'id' => $id,
-        'filename' => basename($orig),
-        'owner' => current_user(),
-        'ext' => $ext,
-        'language' => $lang,
-        'llm' => $llm,
-        'formats' => $fmts,
-        'status' => 'pending',
-        'progress' => 0,
-        'created_at' => now(),
-        'updated_at' => now(),
-        'finished_at' => null,
-        'error' => null,
-        'duration' => 0,
-        'text_preview' => '',
-        'outputs' => [],
+        'id' => $id, 'filename' => basename($orig), 'owner' => current_user(),
+        'ext' => $ext, 'language' => $lang, 'llm' => $llm, 'formats' => $fmts,
+        'status' => 'pending', 'progress' => 0,
+        'created_at' => now(), 'updated_at' => now(),
+        'finished_at' => null, 'error' => null,
+        'duration' => 0, 'text_preview' => '', 'outputs' => [],
         'size' => (int)$_FILES['file']['size'],
     ];
     save_job($job);
@@ -100,6 +92,8 @@ case 'list':
         $me = current_user();
         $jobs = array_values(array_filter($jobs, fn($j) => ($j['owner'] ?? '') === $me));
     }
+    // Burnin joby nevypisujeme v hlavním seznamu
+    $jobs = array_values(array_filter($jobs, fn($j) => ($j['type'] ?? '') !== 'burnin'));
     jsend(['jobs' => array_map('public_job', $jobs)]);
 
 case 'job':
@@ -146,8 +140,7 @@ case 'save_edits':
     if (!is_array($in['segments'] ?? null)) jsend(['error' => 'Chybí segmenty'], 400);
 
     $id = clean_id($j['id']);
-    $segs = [];
-    $parts = [];
+    $segs = []; $parts = [];
     foreach ($in['segments'] as $s) {
         $t = trim((string)($s['text'] ?? ''));
         $segs[] = ['start' => (float)($s['start'] ?? 0), 'end' => (float)($s['end'] ?? 0), 'text' => $t];
@@ -161,51 +154,106 @@ case 'save_edits':
     if (in_array('json', $fmts, true)) {
         $doc = json_decode((string)@file_get_contents(OUT_DIR . "/$id.json"), true);
         if (!is_array($doc)) $doc = [];
-        $doc['text'] = $text;
-        $doc['segments'] = $in['segments'];
-        $doc['edited'] = true;
+        $doc['text'] = $text; $doc['segments'] = $in['segments']; $doc['edited'] = true;
         file_put_contents(OUT_DIR . "/$id.json",
             json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+    // Pokud existuje burnin, invalidovat ho (titulky se změnily)
+    $bi = load_burnin_job($id);
+    if ($bi && in_array($bi['status'], ['done', 'error'], true)) {
+        $bi['status'] = 'outdated';
+        save_job($bi);
     }
     $j['text_preview'] = function_exists('mb_substr') ? mb_substr($text, 0, 20000) : substr($text, 0, 20000);
     $j['edited'] = true;
     save_job($j);
     jsend(['ok' => true]);
 
-// ---------- DELETE (uživatel) ----------------------------------------------
+// ---------- DELETE ----------------------------------------------------------
 case 'delete':
     require_login();
     $j = load_job((string)($_REQUEST['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    // Smaž i případný burnin job
+    $bi = load_burnin_job(clean_id($j['id']));
+    if ($bi) delete_burnin_files($bi);
     delete_job_files($j);
     jsend(['ok' => true, 'deleted' => $j['id']]);
 
+// ---------- BURNIN: uživatel požádá o zapékání -----------------------------
+case 'request_burnin':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    if (($j['status'] ?? '') !== 'done') jsend(['error' => 'Job není dokončen'], 400);
+    $srt = OUT_DIR . '/' . clean_id($j['id']) . '.srt';
+    if (!is_file($srt)) jsend(['error' => 'SRT soubor neexistuje – přidej SRT do formátů'], 400);
+    $src = UP_DIR . '/' . clean_id($j['id']) . '.' . clean_ext($j['ext'] ?? '');
+    if (!is_file($src)) jsend(['error' => 'Původní video již není k dispozici'], 400);
+
+    $bid = 'bi_' . clean_id($j['id']);
+    $bi = [
+        'id' => $bid, 'type' => 'burnin', 'source_id' => $j['id'],
+        'ext' => $j['ext'], 'filename' => $j['filename'],
+        'owner' => current_user(),
+        'status' => 'pending', 'progress' => 0,
+        'created_at' => now(), 'updated_at' => now(),
+        'finished_at' => null, 'error' => null,
+    ];
+    save_job($bi);
+    jsend(['ok' => true, 'burnin_id' => $bid, 'status' => 'pending']);
+
+// ---------- BURNIN: stav a stažení -----------------------------------------
+case 'burnin_status':
+    require_login();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $bi = load_burnin_job(clean_id($j['id']));
+    jsend(['burnin' => $bi ? burnin_public($bi) : null]);
+
+case 'download_burnin':
+    require_login();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $path = BURNIN_DIR . '/' . clean_id($j['id']) . '_burned.mp4';
+    if (!is_file($path)) jsend(['error' => 'Video s titulky není k dispozici'], 404);
+    $base = pathinfo($j['filename'], PATHINFO_FILENAME);
+    header('Content-Type: video/mp4');
+    header('Content-Disposition: attachment; filename="' . $base . '_titulky.mp4' . '"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+
 // ========== WORKER (token) =================================================
 
-// Worker si vyzvedne nejstarší čekající job a označí ho jako "processing".
 case 'worker_claim':
     require_worker();
     $picked = null;
-    $jobs = all_jobs();          // seřazeno od nejnovějšího
-    $jobs = array_reverse($jobs); // chceme nejstarší pending
+    $jobs = array_reverse(all_jobs()); // nejstarší pending první
     foreach ($jobs as $j) {
-        if (($j['status'] ?? '') === 'pending') { $picked = $j; break; }
+        $st = $j['status'] ?? '';
+        if ($st === 'pending') { $picked = $j; break; }
     }
-    if (!$picked) jsend(['job' => null]);   // nic k práci
+    if (!$picked) jsend(['job' => null]);
     $picked['status'] = 'processing';
     $picked['progress'] = 5;
     $picked['updated_at'] = now();
     save_job($picked);
-    jsend(['job' => [
-        'id' => $picked['id'],
-        'filename' => $picked['filename'],
-        'ext' => $picked['ext'],
-        'language' => $picked['language'],
-        'llm' => $picked['llm'] ?? true,
-        'formats' => $picked['formats'],
-    ]]);
+    $jtype = $picked['type'] ?? 'transcribe';
+    $payload = ['id' => $picked['id'], 'type' => $jtype];
+    if ($jtype === 'burnin') {
+        $payload['source_id'] = $picked['source_id'];
+        $payload['ext']       = $picked['ext'];
+        $payload['filename']  = $picked['filename'];
+    } else {
+        $payload['filename'] = $picked['filename'];
+        $payload['ext']      = $picked['ext'];
+        $payload['language'] = $picked['language'];
+        $payload['llm']      = $picked['llm'] ?? true;
+        $payload['formats']  = $picked['formats'];
+    }
+    jsend(['job' => $payload]);
 
-// Worker stáhne zdrojové médium.
 case 'worker_source':
     require_worker();
     $j = load_job((string)($_GET['id'] ?? ''));
@@ -219,7 +267,18 @@ case 'worker_source':
     readfile($path);
     exit;
 
-// Worker hlásí průběh.
+// Worker si stáhne SRT pro burnin job (ze zdrojového jobu)
+case 'worker_burnin_srt':
+    require_worker();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j) jsend(['error' => 'Job nenalezen'], 404);
+    $path = OUT_DIR . '/' . clean_id($j['id']) . '.srt';
+    if (!is_file($path)) jsend(['error' => 'SRT nenalezeno'], 404);
+    header('Content-Type: application/x-subrip; charset=utf-8');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+
 case 'worker_progress':
     require_worker();
     $j = load_job((string)($_POST['id'] ?? ''));
@@ -230,7 +289,6 @@ case 'worker_progress':
     save_job($j);
     jsend(['ok' => true]);
 
-// Worker nahraje výsledky a označí job jako hotový.
 case 'worker_result':
     require_worker();
     $j = load_job((string)($_POST['id'] ?? ''));
@@ -247,6 +305,7 @@ case 'worker_result':
     $j['outputs'] = $outputs;
     $j['text_preview'] = (string)($_POST['text_preview'] ?? '');
     if (isset($_POST['duration'])) $j['duration'] = (float)$_POST['duration'];
+    if (isset($_POST['fps']) && is_numeric($_POST['fps'])) $j['fps'] = (float)$_POST['fps'];
     $j['status'] = 'done';
     $j['progress'] = 100;
     $j['error'] = null;
@@ -255,7 +314,26 @@ case 'worker_result':
     save_job($j);
     jsend(['ok' => true]);
 
-// Worker hlásí chybu.
+// Worker nahraje výsledné zapečené video
+case 'worker_burnin_result':
+    require_worker();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || ($j['type'] ?? '') !== 'burnin') jsend(['error' => 'Burnin job nenalezen'], 404);
+    if (empty($_FILES['video']) || !is_uploaded_file($_FILES['video']['tmp_name'] ?? '')) {
+        jsend(['error' => 'Chybí video soubor'], 400);
+    }
+    $dest = BURNIN_DIR . '/' . clean_id($j['source_id']) . '_burned.mp4';
+    if (!move_uploaded_file($_FILES['video']['tmp_name'], $dest)) {
+        jsend(['error' => 'Nepodařilo se uložit video'], 500);
+    }
+    $j['status'] = 'done';
+    $j['progress'] = 100;
+    $j['error'] = null;
+    $j['finished_at'] = now();
+    $j['updated_at'] = now();
+    save_job($j);
+    jsend(['ok' => true]);
+
 case 'worker_fail':
     require_worker();
     $j = load_job((string)($_POST['id'] ?? ''));

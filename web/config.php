@@ -24,7 +24,8 @@ const LANGUAGES    = ['auto','cs-CZ','en-US','uk-UA'];
 const OUT_FORMATS  = ['txt','srt','vtt','json'];
 
 // --- Cesty (data mimo přímý web přístup, chráněno .htaccess) -------------
-define('DATA_DIR', __DIR__ . '/data');
-define('UP_DIR',   DATA_DIR . '/uploads');
-define('OUT_DIR',  DATA_DIR . '/outputs');
-define('JOB_DIR',  DATA_DIR . '/jobs');
+define('DATA_DIR',   __DIR__ . '/data');
+define('UP_DIR',    DATA_DIR . '/uploads');
+define('OUT_DIR',   DATA_DIR . '/outputs');
+define('JOB_DIR',   DATA_DIR . '/jobs');
+define('BURNIN_DIR', DATA_DIR . '/burnin');

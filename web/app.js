@@ -29,7 +29,7 @@ function uploadWithProgress(fd, onProgress) {
 }
 
 const STATUS_TXT = { pending: "Ve frontě", processing: "Zpracovává worker…", done: "Hotovo", error: "Chyba" };
-let selectedFile = null, currentId = null, pollTimer = null;
+let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null;
 
 /* ---- login ---- */
 async function boot() {
@@ -156,6 +156,17 @@ function openJob(j) {
   const canEdit = j.status === "done" && j.outputs && j.outputs.json;
   ed.classList.toggle("hidden", !canEdit);
   ae.classList.toggle("hidden", !canEdit);
+  const canBurnin = j.status === "done" && j.outputs && j.outputs.srt;
+  $("#btnBurnin").classList.toggle("hidden", !canBurnin);
+  clearTimeout(burninPollTimer);
+  if (canBurnin) {
+    api("burnin_status&id=" + j.id).then(function(d) {
+      updateBurninUI(d.burnin);
+      if (d.burnin && (d.burnin.status === "pending" || d.burnin.status === "processing" || d.burnin.status === "burning")) pollBurnin();
+    }).catch(function() {});
+  } else {
+    $("#burninSection").classList.add("hidden");
+  }
   if (j.status === "done") {
     pv.classList.remove("muted");
     pv.textContent = j.text_preview || "(prázdný výstup)";
@@ -420,16 +431,16 @@ async function generateAE() {
   const posRadio = document.querySelector("input[name=aePos]:checked");
   const posY = posRadio && posRadio.value === "custom"
     ? (parseFloat($("#aePosCustom").value) || 86) : (parseFloat((posRadio || {}).value) || 86);
-  const resRadio = document.querySelector("input[name=aeRes]:checked");
+  const resVal = $("#aeRes").value;
   let compW = 1920, compH = 1080;
-  if (resRadio && resRadio.value === "custom") {
+  if (resVal === "custom") {
     compW = parseInt($("#aeResW").value, 10) || 1920;
     compH = parseInt($("#aeResH").value, 10) || 1080;
-  } else if (resRadio) {
-    const p = resRadio.value.split("x");
-    compW = parseInt(p[0], 10); compH = parseInt(p[1], 10);
+  } else {
+    const p = resVal.split("x");
+    compW = parseInt(p[0], 10) || 1920; compH = parseInt(p[1], 10) || 1080;
   }
-  const fps = parseFloat((document.querySelector("input[name=aeFps]:checked") || {}).value) || 25;
+  const fps = parseFloat($("#aeFps").value) || 25;
   $("#aeMsg").textContent = "Generuji…";
   try {
     const data = await api(`result&id=${window.curJob.id}`);
@@ -444,6 +455,15 @@ async function generateAE() {
 }
 $("#btnAE").addEventListener("click", () => {
   $("#aeMsg").textContent = ""; $("#aePreview").classList.add("hidden");
+  if (window.curJob && window.curJob.fps) {
+    const sel = $("#aeFps"), target = window.curJob.fps;
+    let best = null, bestDiff = Infinity;
+    for (let i = 0; i < sel.options.length; i++) {
+      const d = Math.abs(parseFloat(sel.options[i].value) - target);
+      if (d < bestDiff) { bestDiff = d; best = sel.options[i]; }
+    }
+    if (best && bestDiff < 2) best.selected = true;
+  }
   $("#aeModal").classList.remove("hidden");
 });
 $("#aeClose").addEventListener("click", () => $("#aeModal").classList.add("hidden"));
@@ -458,10 +478,52 @@ document.querySelectorAll("input[name=aePos]").forEach(r => r.addEventListener("
   const custom = document.querySelector("input[name=aePos][value=custom]").checked;
   $("#aePosCustomRow").classList.toggle("hidden", !custom);
 }));
-document.querySelectorAll("input[name=aeRes]").forEach(r => r.addEventListener("change", () => {
-  const custom = document.querySelector("input[name=aeRes][value=custom]").checked;
-  $("#aeResCustomRow").classList.toggle("hidden", !custom);
-}));
+$("#aeRes").addEventListener("change", () => {
+  $("#aeResCustomRow").classList.toggle("hidden", $("#aeRes").value !== "custom");
+});
+
+/* =====================  ZAPÉKÁNÍ TITULKŮ  ===================== */
+async function requestBurnin() {
+  const j = window.curJob; if (!j) return;
+  setMsg("burninMsg", "Odesílám požadavek na zapékání…", "");
+  $("#burninDownload").classList.add("hidden");
+  const fd = new FormData(); fd.append("id", j.id);
+  try {
+    await api("request_burnin", { method: "POST", body: fd });
+    pollBurnin();
+  } catch (e) { setMsg("burninMsg", "Chyba: " + e.message, "err"); }
+}
+async function pollBurnin() {
+  const j = window.curJob; if (!j) return;
+  clearTimeout(burninPollTimer);
+  try {
+    const data = await api("burnin_status&id=" + j.id);
+    updateBurninUI(data.burnin);
+    if (data.burnin && (data.burnin.status === "pending" || data.burnin.status === "processing" || data.burnin.status === "burning")) {
+      burninPollTimer = setTimeout(pollBurnin, 3000);
+    }
+  } catch (e) { /* tiché selhání při pollingu */ }
+}
+function updateBurninUI(bi) {
+  const sec = $("#burninSection"), dl = $("#burninDownload");
+  if (!bi) { sec.classList.add("hidden"); return; }
+  sec.classList.remove("hidden");
+  dl.classList.add("hidden");
+  if (bi.status === "done") {
+    setMsg("burninMsg", "✓ Video se zapečenými titulky je připraveno.", "ok");
+    dl.href = API + "?action=download_burnin&id=" + (window.curJob && window.curJob.id);
+    dl.classList.remove("hidden");
+  } else if (bi.status === "error") {
+    setMsg("burninMsg", "Chyba zapékání: " + (bi.error || "neznámá"), "err");
+  } else if (bi.status === "outdated") {
+    setMsg("burninMsg", "Video zastaralé – titulky byly upraveny. Klikni znovu na 🎞 Zapéct.", "");
+  } else {
+    const STXT = { pending: "Ve frontě na zapékání…", burning: "Zapékám titulky…", processing: "Zpracovávám…" };
+    $("#burninMsg").textContent = (STXT[bi.status] || bi.status) + " (" + (bi.progress || 0) + " %)";
+    $("#burninMsg").className = "status-line";
+  }
+}
+$("#btnBurnin").addEventListener("click", requestBurnin);
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }

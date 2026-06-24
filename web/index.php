@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -86,10 +86,15 @@
             <div class="head-tools">
               <button id="btnEditor" class="btn small ghost hidden">✎ Korektor</button>
               <button id="btnAE" class="btn small ghost hidden">🎬 After Effects</button>
+              <button id="btnBurnin" class="btn small ghost hidden">🎞 Zapéct video</button>
               <div id="downloads" class="downloads hidden"></div>
             </div>
           </div>
           <div id="preview" class="preview muted">Vyber zakázku ze seznamu.</div>
+          <div id="burninSection" class="burnin-section hidden">
+            <div id="burninMsg" class="status-line"></div>
+            <a id="burninDownload" class="btn small hidden" download>⬇ Stáhnout MP4</a>
+          </div>
         </div>
       </section>
     </main>
@@ -156,12 +161,17 @@
               <span class="ae-unit">% výšky kompozice</span>
             </span>
           </div>
-          <div class="ae-row"><span>Nová kompozice</span>
-            <span class="ae-radios">
-              <label><input type="radio" name="aeRes" value="1920x1080" checked> 1080p</label>
-              <label><input type="radio" name="aeRes" value="3840x2160"> 4K</label>
-              <label><input type="radio" name="aeRes" value="custom"> vlastní</label>
-            </span>
+          <div class="ae-row"><span>Rozlišení kompozice</span>
+            <select id="aeRes">
+              <option value="1920x1080" selected>1080p FHD · 1920×1080</option>
+              <option value="1280x720">720p HD · 1280×720</option>
+              <option value="3840x2160">4K UHD · 3840×2160</option>
+              <option value="4096x2160">4K DCI · 4096×2160</option>
+              <option value="2560x1440">2K QHD · 2560×1440</option>
+              <option value="1080x1920">9:16 Vertikální · 1080×1920</option>
+              <option value="1080x1080">1:1 Čtverec · 1080×1080</option>
+              <option value="custom">Vlastní rozlišení…</option>
+            </select>
           </div>
           <div id="aeResCustomRow" class="ae-row hidden"><span></span>
             <span class="ae-inline-group">
@@ -172,11 +182,16 @@
             </span>
           </div>
           <div class="ae-row"><span>Snímků/s (FPS)</span>
-            <span class="ae-radios">
-              <label><input type="radio" name="aeFps" value="24"> 24</label>
-              <label><input type="radio" name="aeFps" value="25" checked> 25</label>
-              <label><input type="radio" name="aeFps" value="30"> 30</label>
-            </span>
+            <select id="aeFps">
+              <option value="23.976">23.976 (film/NTSC)</option>
+              <option value="24">24 (kino)</option>
+              <option value="25" selected>25 (PAL/CZ)</option>
+              <option value="29.97">29.97 (NTSC)</option>
+              <option value="30">30</option>
+              <option value="50">50 (PAL HD)</option>
+              <option value="59.94">59.94 (NTSC HD)</option>
+              <option value="60">60</option>
+            </select>
           </div>
         </div>
 
@@ -193,6 +208,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

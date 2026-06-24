@@ -2,7 +2,7 @@
 require_once __DIR__ . '/config.php';
 
 function ensure_dirs(): void {
-    foreach ([DATA_DIR, UP_DIR, OUT_DIR, JOB_DIR] as $d) {
+    foreach ([DATA_DIR, UP_DIR, OUT_DIR, JOB_DIR, BURNIN_DIR] as $d) {
         if (!is_dir($d)) @mkdir($d, 0775, true);
     }
 }
@@ -102,6 +102,34 @@ function delete_job_files(array $job): void {
     @unlink(job_path($id));
 }
 
+function burnin_job_path(string $source_id): string {
+    return JOB_DIR . '/bi_' . clean_id($source_id) . '.json';
+}
+
+function load_burnin_job(string $source_id): ?array {
+    $p = burnin_job_path($source_id);
+    if (!is_file($p)) return null;
+    $j = json_decode((string)file_get_contents($p), true);
+    return is_array($j) ? $j : null;
+}
+
+function burnin_public(array $bi): array {
+    return [
+        'id'          => $bi['id'] ?? '',
+        'status'      => $bi['status'] ?? 'pending',
+        'progress'    => (int)($bi['progress'] ?? 0),
+        'error'       => $bi['error'] ?? null,
+        'created_at'  => $bi['created_at'] ?? '',
+        'finished_at' => $bi['finished_at'] ?? null,
+    ];
+}
+
+function delete_burnin_files(array $bi): void {
+    $src_id = clean_id($bi['source_id'] ?? '');
+    if ($src_id) @unlink(BURNIN_DIR . '/' . $src_id . '_burned.mp4');
+    @unlink(JOB_DIR . '/bi_' . $src_id . '.json');
+}
+
 function new_id(): string {
     return bin2hex(random_bytes(6));
 }
@@ -155,6 +183,7 @@ function public_job(array $j): array {
         'finished_at'  => $j['finished_at'] ?? null,
         'error'        => $j['error'] ?? null,
         'duration'     => $j['duration'] ?? 0,
+        'fps'          => isset($j['fps']) ? (float)$j['fps'] : null,
         'text_preview' => $j['text_preview'] ?? '',
         'outputs'      => $j['outputs'] ?? [],
         'size'         => (int)($j['size'] ?? 0),
