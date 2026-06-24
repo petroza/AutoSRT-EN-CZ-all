@@ -498,9 +498,10 @@ async function generateAE() {
     renderAePreview(subs);
   } catch (e) { $("#aeMsg").textContent = "Chyba: " + e.message; }
 }
-$("#btnAE").addEventListener("click", () => {
+$("#btnAE").addEventListener("click", async () => {
   $("#aeMsg").textContent = ""; $("#aePreview").classList.add("hidden");
   fillSubsSelect($("#aeSubs"));
+  refreshCurTranslate().then(() => fillSubsSelect($("#aeSubs")));   // po dotažení překladu doplnit
   if (window.curJob && window.curJob.fps) {
     const sel = $("#aeFps"), target = window.curJob.fps;
     let best = null, bestDiff = Infinity;
@@ -582,6 +583,15 @@ function updateBurninUI(bi) {
     bar.style.width = (bi.progress || 0) + "%";
   }
 }
+// čerstvě dotáhne stav překladu aktuální zakázky (kvůli časování při otevření dialogu)
+async function refreshCurTranslate() {
+  const j = window.curJob;
+  if (!j) { window.curTranslate = null; return; }
+  try {
+    const d = await api("translate_status&id=" + j.id);
+    window.curTranslate = d.translate || null;
+  } catch (e) { /* ponech stávající stav */ }
+}
 // naplní výběr titulků (originál + dokončený překlad)
 function fillSubsSelect(sel) {
   if (!sel) return;
@@ -609,7 +619,13 @@ function parseSrt(txt) {
   }
   return segs;
 }
-$("#btnBurnin").addEventListener("click", function () { $("#biMsg").textContent = ""; fillSubsSelect($("#biSubs")); $("#burninModal").classList.remove("hidden"); });
+$("#btnBurnin").addEventListener("click", async function () {
+  $("#biMsg").textContent = "";
+  fillSubsSelect($("#biSubs"));                 // hned z toho, co je známo
+  $("#burninModal").classList.remove("hidden");
+  await refreshCurTranslate();                  // a po dotažení znovu (kdyby překlad mezitím doběhl)
+  fillSubsSelect($("#biSubs"));
+});
 $("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
 $("#biStart").addEventListener("click", requestBurnin);
 
