@@ -92,8 +92,8 @@ case 'list':
         $me = current_user();
         $jobs = array_values(array_filter($jobs, fn($j) => ($j['owner'] ?? '') === $me));
     }
-    // Burnin joby nevypisujeme v hlavním seznamu
-    $jobs = array_values(array_filter($jobs, fn($j) => ($j['type'] ?? '') !== 'burnin'));
+    // Pomocné joby (burnin/translate) nevypisujeme v hlavním seznamu
+    $jobs = array_values(array_filter($jobs, fn($j) => !in_array($j['type'] ?? '', ['burnin', 'translate'], true)));
     jsend(['jobs' => array_map('public_job', $jobs)]);
 
 case 'job':
@@ -158,11 +158,16 @@ case 'save_edits':
         file_put_contents(OUT_DIR . "/$id.json",
             json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     }
-    // Pokud existuje burnin, invalidovat ho (titulky se změnily)
+    // Pokud existuje burnin/překlad, invalidovat (titulky se změnily)
     $bi = load_burnin_job($id);
     if ($bi && in_array($bi['status'], ['done', 'error'], true)) {
         $bi['status'] = 'outdated';
         save_burnin_job($bi);
+    }
+    $tr = load_translate_job($id);
+    if ($tr && in_array($tr['status'], ['done', 'error'], true)) {
+        $tr['status'] = 'outdated';
+        save_translate_job($tr);
     }
     $j['text_preview'] = function_exists('mb_substr') ? mb_substr($text, 0, 20000) : substr($text, 0, 20000);
     $j['edited'] = true;
@@ -174,9 +179,11 @@ case 'delete':
     require_login();
     $j = load_job((string)($_REQUEST['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
-    // Smaž i případný burnin job
+    // Smaž i případný burnin / překlad
     $bi = load_burnin_job($j['id']);
     if ($bi) delete_burnin_files($bi);
+    $tr = load_translate_job($j['id']);
+    if ($tr) delete_translate_files($tr);
     delete_job_files($j);
     jsend(['ok' => true, 'deleted' => $j['id']]);
 
@@ -236,6 +243,52 @@ case 'download_burnin':
     readfile($path);
     exit;
 
+// ---------- PŘEKLAD: požadavek / stav / stažení ----------------------------
+case 'request_translate':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    if (($j['status'] ?? '') !== 'done') jsend(['error' => 'Job není dokončen'], 400);
+    if (!is_file(OUT_DIR . '/' . clean_id($j['id']) . '.json'))
+        jsend(['error' => 'Chybí JSON s titulky (přidej JSON do formátů)'], 400);
+    $target = (string)($_POST['target'] ?? 'en-US');
+    if (!in_array($target, TRANSLATE_TARGETS, true)) jsend(['error' => 'Nepodporovaný cílový jazyk'], 400);
+    $tid = 'tr_' . clean_id($j['id']);
+    $tr = [
+        'id' => $tid, 'type' => 'translate', 'source_id' => $j['id'],
+        'filename' => $j['filename'], 'owner' => current_user(), 'target' => $target,
+        'status' => 'pending', 'progress' => 0,
+        'created_at' => now(), 'updated_at' => now(), 'finished_at' => null, 'error' => null,
+    ];
+    save_translate_job($tr);
+    jsend(['ok' => true, 'translate_id' => $tid, 'status' => 'pending']);
+
+case 'translate_status':
+    require_login();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $tr = load_translate_job($j['id']);
+    jsend(['translate' => $tr ? translate_public($tr) : null]);
+
+case 'download_translate':
+    require_login();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $tr = load_translate_job($j['id']);
+    if (!$tr) jsend(['error' => 'Překlad neexistuje'], 404);
+    $fmt = strtolower((string)($_GET['fmt'] ?? 'srt'));
+    if (!in_array($fmt, ['srt', 'vtt', 'txt'], true)) jsend(['error' => 'Neplatný formát'], 400);
+    $t = preg_replace('/[^A-Za-z-]/', '', (string)($tr['target'] ?? ''));
+    $path = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.' . $fmt;
+    if (!is_file($path)) jsend(['error' => 'Soubor neexistuje'], 404);
+    $base = pathinfo($j['filename'], PATHINFO_FILENAME);
+    $mimes = ['srt' => 'application/x-subrip', 'vtt' => 'text/vtt', 'txt' => 'text/plain'];
+    header('Content-Type: ' . $mimes[$fmt] . '; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $base . '.' . $t . '.' . $fmt . '"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+
 // ========== WORKER (token) =================================================
 
 case 'worker_claim':
@@ -270,6 +323,9 @@ case 'worker_claim':
         $payload['ext']       = $picked['ext'];
         $payload['filename']  = $picked['filename'];
         $payload['opts']      = $picked['opts'] ?? null;
+    } elseif ($jtype === 'translate') {
+        $payload['source_id'] = $picked['source_id'];
+        $payload['target']    = $picked['target'];
     } else {
         $payload['filename'] = $picked['filename'];
         $payload['ext']      = $picked['ext'];
@@ -357,6 +413,39 @@ case 'worker_burnin_result':
     $j['finished_at'] = now();
     $j['updated_at'] = now();
     save_burnin_job($j);
+    jsend(['ok' => true]);
+
+// Worker si stáhne zdrojový JSON se segmenty (pro překlad)
+case 'worker_source_json':
+    require_worker();
+    $j = load_job((string)($_GET['id'] ?? ''));
+    if (!$j) jsend(['error' => 'Job nenalezen'], 404);
+    $path = OUT_DIR . '/' . clean_id($j['id']) . '.json';
+    if (!is_file($path)) jsend(['error' => 'JSON nenalezen'], 404);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+
+// Worker nahraje přeložené titulky
+case 'worker_translate_result':
+    require_worker();
+    $j = load_job_flexible((string)($_POST['id'] ?? ''));
+    if (!$j || ($j['type'] ?? '') !== 'translate') jsend(['error' => 'Překlad nenalezen'], 404);
+    $src = clean_id($j['source_id']);
+    $t = preg_replace('/[^A-Za-z-]/', '', (string)($j['target'] ?? ''));
+    foreach (['srt', 'vtt', 'txt'] as $fmt) {
+        if (!empty($_FILES[$fmt]) && is_uploaded_file($_FILES[$fmt]['tmp_name'] ?? '')) {
+            move_uploaded_file($_FILES[$fmt]['tmp_name'], OUT_DIR . '/' . $src . '.' . $t . '.' . $fmt);
+        }
+    }
+    $j['text_preview'] = (string)($_POST['text_preview'] ?? '');
+    $j['status'] = 'done';
+    $j['progress'] = 100;
+    $j['error'] = null;
+    $j['finished_at'] = now();
+    $j['updated_at'] = now();
+    save_translate_job($j);
     jsend(['ok' => true]);
 
 case 'worker_fail':

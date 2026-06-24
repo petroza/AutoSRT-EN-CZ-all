@@ -29,7 +29,7 @@ function uploadWithProgress(fd, onProgress) {
 }
 
 const STATUS_TXT = { pending: "Ve frontě", processing: "Zpracovává worker…", done: "Hotovo", error: "Chyba" };
-let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null;
+let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null, translatePollTimer = null;
 
 /* ---- login ---- */
 async function boot() {
@@ -166,6 +166,17 @@ function openJob(j) {
     }).catch(function() {});
   } else {
     $("#burninSection").classList.add("hidden");
+  }
+  const canTranslate = j.status === "done" && j.outputs && j.outputs.json;
+  $("#btnTranslate").classList.toggle("hidden", !canTranslate);
+  clearTimeout(translatePollTimer);
+  if (canTranslate) {
+    api("translate_status&id=" + j.id).then(function(d) {
+      updateTranslateUI(d.translate);
+      if (d.translate && (d.translate.status === "pending" || d.translate.status === "translating" || d.translate.status === "processing")) pollTranslate();
+    }).catch(function() {});
+  } else {
+    $("#translateSection").classList.add("hidden");
   }
   if (j.status === "done") {
     pv.classList.remove("muted");
@@ -538,6 +549,65 @@ function updateBurninUI(bi) {
 $("#btnBurnin").addEventListener("click", function () { $("#biMsg").textContent = ""; $("#burninModal").classList.remove("hidden"); });
 $("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
 $("#biStart").addEventListener("click", requestBurnin);
+
+/* =====================  PŘEKLAD TITULKŮ  ===================== */
+async function requestTranslate() {
+  const j = window.curJob; if (!j) return;
+  $("#translateModal").classList.add("hidden");
+  setMsg("translateMsg", "Odesílám požadavek na překlad…", "");
+  $("#translateDownloads").classList.add("hidden");
+  const fd = new FormData();
+  fd.append("id", j.id);
+  fd.append("target", $("#trTarget").value);
+  try {
+    await api("request_translate", { method: "POST", body: fd });
+    pollTranslate();
+  } catch (e) { setMsg("translateMsg", "Chyba: " + e.message, "err"); }
+}
+async function pollTranslate() {
+  const j = window.curJob; if (!j) return;
+  clearTimeout(translatePollTimer);
+  try {
+    const data = await api("translate_status&id=" + j.id);
+    updateTranslateUI(data.translate);
+    if (data.translate && (data.translate.status === "pending" || data.translate.status === "translating" || data.translate.status === "processing")) {
+      translatePollTimer = setTimeout(pollTranslate, 3000);
+    }
+  } catch (e) { /* tiché selhání při pollingu */ }
+}
+function updateTranslateUI(tr) {
+  const sec = $("#translateSection"), dls = $("#translateDownloads"), pr = $("#translateProg"), bar = $("#translateBar");
+  if (!tr) { sec.classList.add("hidden"); return; }
+  sec.classList.remove("hidden");
+  dls.classList.add("hidden"); dls.innerHTML = "";
+  if (tr.status === "done") {
+    setMsg("translateMsg", "✓ Překlad (" + (tr.target || "") + ") hotový.", "ok");
+    pr.classList.add("hidden");
+    const id = window.curJob && window.curJob.id;
+    ["srt", "vtt", "txt"].forEach(function (fmt) {
+      const a = document.createElement("a");
+      a.className = "btn small"; a.download = "";
+      a.href = API + "?action=download_translate&id=" + id + "&fmt=" + fmt + "&t=" + Date.now();
+      a.textContent = "⬇ " + fmt.toUpperCase();
+      dls.appendChild(a);
+    });
+    dls.classList.remove("hidden");
+  } else if (tr.status === "error") {
+    setMsg("translateMsg", "Chyba překladu: " + (tr.error || "neznámá"), "err");
+    pr.classList.add("hidden");
+  } else if (tr.status === "outdated") {
+    setMsg("translateMsg", "Překlad zastaralý – titulky byly upraveny. Klikni znovu na 🌐 Přeložit.", "");
+    pr.classList.add("hidden");
+  } else {
+    const STXT = { pending: "Ve frontě na překlad…", translating: "Překládám…", processing: "Zpracovávám…" };
+    setMsg("translateMsg", (STXT[tr.status] || tr.status) + " (" + (tr.progress || 0) + " %)", "");
+    pr.classList.remove("hidden");
+    bar.style.width = (tr.progress || 0) + "%";
+  }
+}
+$("#btnTranslate").addEventListener("click", function () { $("#trMsg").textContent = ""; $("#translateModal").classList.remove("hidden"); });
+$("#trClose").addEventListener("click", function () { $("#translateModal").classList.add("hidden"); });
+$("#trStart").addEventListener("click", requestTranslate);
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }

@@ -56,6 +56,7 @@
               <option value="cs-CZ" selected>Čeština · cs-CZ</option>
               <option value="en-US">Angličtina · en-US</option>
               <option value="uk-UA">Ukrajinština · uk-UA</option>
+              <option value="ru-RU">Ruština · ru-RU</option>
             </select>
           </label>
           <div class="field"><span>Výstupy</span>
@@ -87,6 +88,7 @@
               <button id="btnEditor" class="btn small ghost hidden">✎ Korektor</button>
               <button id="btnAE" class="btn small ghost hidden">🎬 After Effects</button>
               <button id="btnBurnin" class="btn small ghost hidden">🎞 Zapéct video</button>
+              <button id="btnTranslate" class="btn small ghost hidden">🌐 Přeložit</button>
               <div id="downloads" class="downloads hidden"></div>
             </div>
           </div>
@@ -97,6 +99,13 @@
               <div id="burninProg" class="upprog hidden"><i id="burninBar"></i></div>
             </div>
             <a id="burninDownload" class="btn small hidden" download>⬇ Stáhnout MP4</a>
+          </div>
+          <div id="translateSection" class="burnin-section hidden">
+            <div class="burnin-info">
+              <div id="translateMsg" class="status-line"></div>
+              <div id="translateProg" class="upprog hidden"><i id="translateBar"></i></div>
+            </div>
+            <div id="translateDownloads" class="downloads hidden"></div>
           </div>
         </div>
       </section>
@@ -245,6 +254,33 @@
       </div>
     </div>
 
-  <script src="app.js?v=9"></script>
+    <!-- PŘEKLAD TITULKŮ (po přepisu) -->
+    <div id="translateModal" class="ae-overlay hidden">
+      <div class="ae-box">
+        <div class="ae-title">🌐 Přeložit titulky</div>
+        <label class="ae-row"><span>Do jazyka</span>
+          <select id="trTarget">
+            <option value="en-US">Angličtina</option>
+            <option value="cs-CZ">Čeština</option>
+            <option value="uk-UA">Ukrajinština</option>
+            <option value="ru-RU">Ruština</option>
+            <option value="de-DE">Němčina</option>
+            <option value="sk-SK">Slovenština</option>
+            <option value="pl-PL">Polština</option>
+            <option value="es-ES">Španělština</option>
+            <option value="fr-FR">Francouzština</option>
+            <option value="it-IT">Italština</option>
+          </select></label>
+        <div id="trMsg" class="status-line"></div>
+        <div class="ae-actions">
+          <button id="trStart" class="btn small primary">Přeložit</button>
+          <button id="trClose" class="btn small ghost">Zavřít</button>
+        </div>
+        <div class="ae-hint">Překlad běží lokálně na workeru (LLM) a zachová časování titulků.
+          U delších videí to chvíli trvá — průběh uvidíš na liště. Výsledek stáhneš jako SRT/VTT/TXT.</div>
+      </div>
+    </div>
+
+  <script src="app.js?v=10"></script>
 </body>
 </html>

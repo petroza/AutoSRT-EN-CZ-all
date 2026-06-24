@@ -177,6 +177,58 @@ def process_burnin(job):
     print(f"[BURN] {jid} hotovo")
 
 
+def process_translate(job):
+    """Přeloží titulky hotového jobu do cílového jazyka (LLM) a nahraje zpět."""
+    jid = job["id"]
+    src_id = job["source_id"]
+    target = job.get("target") or "en-US"
+    WORK.mkdir(parents=True, exist_ok=True)
+
+    # 1) stáhni zdrojový JSON se segmenty
+    progress(jid, "translating", 8)
+    src_json = WORK / f"{jid}_src.json"
+    _download({"action": "worker_source_json", "id": src_id}, src_json)
+    doc = json.loads(src_json.read_text(encoding="utf-8"))
+    segs = doc.get("segments", [])
+    n = len(segs) or 1
+
+    # 2) přelož segment po segmentu (zachová časování)
+    out_segs = []
+    for i, s in enumerate(segs):
+        txt = (s.get("text") or "").strip()
+        tr = asr_engine.llm_translate(txt, target) if txt else txt
+        out_segs.append({"start": s.get("start", 0), "end": s.get("end", 0), "text": tr})
+        progress(jid, "translating", 8 + int((i + 1) / n * 82))
+
+    # 3) export + nahrání
+    full = " ".join(x["text"] for x in out_segs if x["text"]).strip()
+    paths = exporters.export_all({"text": full, "segments": out_segs},
+                                 WORK, jid + "_tr", ["srt", "vtt", "txt"],
+                                 {"target": target, "source_id": src_id})
+    progress(jid, "translating", 95)
+    fhs, files = [], {}
+    try:
+        for fmt in ["srt", "vtt", "txt"]:
+            p = paths.get(fmt)
+            if p and Path(p).is_file():
+                fh = open(p, "rb")
+                fhs.append(fh)
+                files[fmt] = (f"{jid}.{fmt}", fh)
+        rr = requests.post(API, params={"action": "worker_translate_result"}, headers=HEAD,
+                           data={"id": jid, "text_preview": full[:5000]},
+                           files=files, timeout=180)
+        rr.raise_for_status()
+    finally:
+        for fh in fhs:
+            fh.close()
+    for p in [src_json, *[Path(v) for v in paths.values()]]:
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+    print(f"[TR] {jid} -> {target} hotovo ({len(out_segs)} segmentů)")
+
+
 def main():
     print("=" * 56)
     print(" PZ Titulkovač worker")
@@ -203,6 +255,8 @@ def main():
         try:
             if jtype == "burnin":
                 process_burnin(job)
+            elif jtype == "translate":
+                process_translate(job)
             else:
                 process(job)
         except Exception as e:

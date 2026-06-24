@@ -90,14 +90,46 @@ function save_burnin_job(array $bi): void {
 }
 
 function load_job_flexible(string $id): ?array {
-    $j = load_job($id);
-    if ($j) return $j;
+    // POZOR: prefix musí mít přednost před load_job(); clean_id by u 'tr_'
+    // odstranil t/r (nejsou hex) a omylem trefil zdrojový job.
     if (strncmp($id, 'bi_', 3) === 0) return load_burnin_job(substr($id, 3));
-    return null;
+    if (strncmp($id, 'tr_', 3) === 0) return load_translate_job(substr($id, 3));
+    return load_job($id);
 }
 
 function save_job_any(array $j): void {
-    if (($j['type'] ?? '') === 'burnin') save_burnin_job($j); else save_job($j);
+    $t = $j['type'] ?? '';
+    if ($t === 'burnin') save_burnin_job($j);
+    elseif ($t === 'translate') save_translate_job($j);
+    else save_job($j);
+}
+
+// --- překladové joby (tr_{source_id}.json) ---
+function translate_job_path(string $source_id): string {
+    return JOB_DIR . '/tr_' . clean_id($source_id) . '.json';
+}
+function load_translate_job(string $source_id): ?array {
+    $p = translate_job_path($source_id);
+    if (!is_file($p)) return null;
+    $j = json_decode((string)file_get_contents($p), true);
+    return is_array($j) ? $j : null;
+}
+function save_translate_job(array $tr): void {
+    file_put_contents(translate_job_path($tr['source_id'] ?? ''),
+        json_encode($tr, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+}
+function translate_public(array $tr): array {
+    return [
+        'id' => $tr['id'] ?? '', 'status' => $tr['status'] ?? 'pending',
+        'progress' => (int)($tr['progress'] ?? 0), 'error' => $tr['error'] ?? null,
+        'target' => $tr['target'] ?? '', 'finished_at' => $tr['finished_at'] ?? null,
+    ];
+}
+function delete_translate_files(array $tr): void {
+    $src = clean_id($tr['source_id'] ?? '');
+    $t = preg_replace('/[^A-Za-z-]/', '', (string)($tr['target'] ?? ''));
+    foreach (['srt', 'vtt', 'txt'] as $fmt) @unlink(OUT_DIR . '/' . $src . '.' . $t . '.' . $fmt);
+    @unlink(translate_job_path($src));
 }
 
 function all_jobs(): array {

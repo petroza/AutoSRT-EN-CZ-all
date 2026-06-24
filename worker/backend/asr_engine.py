@@ -290,7 +290,63 @@ def _apply_corrections(text: str, rules) -> str:
     return text
 
 
-def _llm_correct_chunk(text: str) -> str:
+_LANG_LOC = {
+    "cs-CZ": "češtině", "en-US": "angličtině", "uk-UA": "ukrajinštině",
+    "ru-RU": "ruštině", "auto": None,
+}
+
+
+def _corr_prompt(lang: Optional[str], text: str) -> str:
+    loc = _LANG_LOC.get(lang or "auto")
+    lang_line = (f"Text je v {loc}; výstup MUSÍ zůstat v {loc} – jazyk NEMĚŇ a NEPŘEKLÁDEJ."
+                 if loc else "Zachovej původní jazyk textu, NEPŘEKLÁDEJ.")
+    return (
+        "Jsi korektor přepisu řeči. " + lang_line + " Oprav v textu dvě věci: "
+        "(1) foneticky špatně napsaná cizí slova, značky a vlastní jména na jejich "
+        "správný pravopis (např. porše→Porsche, ajfoun→iPhone); "
+        "(2) zjevně chybně rozpoznaná slova podle kontextu (např. déka→délka, "
+        "sánku→tanku, pádesát→padesát). NEparafrázuj, neměň slovosled ani "
+        "interpunkci, neopravuj už správná slova, nic nepřidávej. "
+        "Vrať POUZE opravený text.\n\nText:\n" + text
+    )
+
+
+_TRANSLATE_NAMES = {
+    "cs-CZ": "češtiny", "en-US": "angličtiny", "uk-UA": "ukrajinštiny",
+    "ru-RU": "ruštiny", "de-DE": "němčiny", "sk-SK": "slovenštiny",
+    "pl-PL": "polštiny", "es-ES": "španělštiny", "fr-FR": "francouzštiny",
+    "it-IT": "italštiny",
+}
+
+
+def llm_translate(text: str, target: str, log: LogFn = None) -> str:
+    """Přeloží titulkový řádek do cílového jazyka lokálním LLM (Ollama).
+    Bezpečný fallback: při chybě vrátí původní text."""
+    text = (text or "").strip()
+    if not text:
+        return text
+    tname = _TRANSLATE_NAMES.get(target, target)
+    try:
+        import requests
+    except Exception:
+        return text
+    prompt = (f"Přelož následující titulek do {tname}. Zachovej smysl i styl, "
+              f"vrať POUZE překlad – žádný komentář, žádné uvozovky.\n\n{text}")
+    try:
+        r = requests.post(
+            config.OLLAMA_URL,
+            json={"model": config.OLLAMA_MODEL, "prompt": prompt, "stream": False,
+                  "keep_alive": "10m", "options": {"temperature": 0.1, "num_predict": 512}},
+            timeout=config.LLM_TIMEOUT,
+        )
+        r.raise_for_status()
+        out = (r.json().get("response") or "").strip().strip('"').strip("`").strip()
+        return out or text
+    except Exception:
+        return text
+
+
+def _llm_correct_chunk(text: str, lang: Optional[str] = None) -> str:
     """Jeden blok textu -> Ollama. Vždy bezpečný fallback na původní text."""
     text = (text or "").strip()
     if not config.LLM_CORRECT or len(text) < 3:
@@ -299,13 +355,7 @@ def _llm_correct_chunk(text: str) -> str:
         import requests
     except Exception:
         return text
-    prompt = (
-        "Jsi korektor českého přepisu řeči. V textu oprav POUZE foneticky špatně "
-        "napsaná cizí slova, značky a vlastní jména na jejich správný originální "
-        "pravopis (např. porše→Porsche, ajfoun→iPhone, mekdonald→McDonald's). "
-        "Česká slova, slovosled ani interpunkci NEMĚŇ. NEPŘEKLÁDEJ. Nepřidávej "
-        "žádný komentář ani uvozovky. Vrať POUZE opravený text.\n\nText:\n" + text
-    )
+    prompt = _corr_prompt(lang, text)
     try:
         r = requests.post(
             config.OLLAMA_URL,
@@ -327,13 +377,13 @@ def _llm_correct_chunk(text: str) -> str:
     return out
 
 
-def _llm_correct_text(text: str) -> str:
+def _llm_correct_text(text: str, lang: Optional[str] = None) -> str:
     """Opraví celý text (kvůli kontextu); dlouhý rozseká na věty do bloků ~1200 znaků."""
     text = (text or "").strip()
     if not config.LLM_CORRECT or len(text) < 3:
         return text
     if len(text) <= 1200:
-        return _llm_correct_chunk(text)
+        return _llm_correct_chunk(text, lang)
     sents = re.findall(r"[^.!?…]*[.!?…]", text) or [text]
     chunks, cur = [], ""
     for s in sents:
@@ -344,7 +394,7 @@ def _llm_correct_text(text: str) -> str:
             cur += s
     if cur:
         chunks.append(cur)
-    return " ".join(_llm_correct_chunk(c.strip()) for c in chunks).strip()
+    return " ".join(_llm_correct_chunk(c.strip(), lang) for c in chunks).strip()
 
 
 def _word_fixes(orig: str, corrected: str) -> dict:
@@ -380,7 +430,8 @@ def _apply_rules_to_tokens(seg: dict, rules) -> None:
         seg["text"] = _clean_text(" ".join(t.get("w", "") for t in toks))
 
 
-def _postprocess(result: dict, use_llm: Optional[bool] = None) -> dict:
+def _postprocess(result: dict, use_llm: Optional[bool] = None,
+                 lang: Optional[str] = None) -> dict:
     use_llm = config.LLM_CORRECT if use_llm is None else use_llm
     segs = result.get("segments", [])
 
@@ -396,7 +447,7 @@ def _postprocess(result: dict, use_llm: Optional[bool] = None) -> dict:
     #    (značka 'orig' = původní tvar), takže zůstane zachováno časování.
     if use_llm:
         orig = result.get("text", "")
-        corrected = _llm_correct_text(orig)
+        corrected = _llm_correct_text(orig, lang)
         if corrected and corrected != orig:
             result["text"] = corrected
             fixes = _word_fixes(orig, corrected)
@@ -565,7 +616,7 @@ def transcribe_file(input_wav_path: str, language: str, job_id: str,
             "words": words,
             "backend": "parakeet.cpp",
             "model": model.name,
-        }, use_llm=llm_correct)
+        }, use_llm=llm_correct, lang=language)
 
     # JSON se nepodařilo načíst -> ber stdout jako čistý text (fallback).
     text = _clean_text(stdout)
@@ -580,7 +631,7 @@ def transcribe_file(input_wav_path: str, language: str, job_id: str,
         "words": [],
         "backend": "parakeet.cpp",
         "model": model.name,
-    }, use_llm=llm_correct)
+    }, use_llm=llm_correct, lang=language)
 
 
 def engine_status() -> dict:

@@ -53,6 +53,7 @@ LANGUAGE_MAP = {
     "cs-CZ": "cs-CZ",
     "en-US": "en-US",
     "uk-UA": "uk-UA",
+    "ru-RU": "ru-RU",
 }
 SUPPORTED_LANGUAGES = list(LANGUAGE_MAP.keys())
 DEFAULT_LANGUAGE = "cs-CZ"   # priorita: čeština
