@@ -545,6 +545,9 @@ async function requestBurnin() {
   fd.append("chars", $("#biChars").value);
   fd.append("lines", (document.querySelector('input[name=biLines]:checked') || {}).value || "2");
   fd.append("bold", $("#biBold").checked ? "1" : "0");
+  fd.append("bg", $("#biBg").value);
+  fd.append("bgalpha", $("#biBgAlpha").value);
+  fd.append("outline", $("#biOutline").value);
   try {
     await api("request_burnin", { method: "POST", body: fd });
     pollBurnin();

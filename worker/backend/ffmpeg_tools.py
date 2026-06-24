@@ -232,9 +232,12 @@ def _srt_ts_to_ass(ts: str) -> str:
 
 def _build_ass(srt_text: str, vid_w: int, vid_h: int, font: str, size: int,
                align: int, marginv: int, bold: int, outline: int,
-               chars: int, max_lines: int) -> str:
+               chars: int, max_lines: int, border_style: int = 1,
+               outline_colour: str = "&H00000000", back_colour: str = "&H00000000",
+               shadow: int = 0) -> str:
     """Sestaví ASS titulky s WrapStyle:2 (vypne auto-zalamování libass), takže
-    počet řádků je přesně dán (1 nebo 2) – ne šířkou videa."""
+    počet řádků je přesně dán (1 nebo 2) – ne šířkou videa.
+    border_style 1=okraj+stín, 3=plný box (podklad). Barvy ASS = &HAABBGGRR."""
     import re as _re
     blocks = _re.split(r"\r?\n\s*\r?\n", (srt_text or "").strip())
     events = []
@@ -258,8 +261,8 @@ def _build_ass(srt_text: str, vid_w: int, vid_h: int, font: str, size: int,
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, "
         "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, "
         "Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{size},&H00FFFFFF,&H00000000,&H00000000,{bold},0,0,0,"
-        f"100,100,0,0,1,{outline},0,{align},40,40,{marginv},1\n\n"
+        f"Style: Default,{font},{size},&H00FFFFFF,{outline_colour},{back_colour},{bold},0,0,0,"
+        f"100,100,0,0,{border_style},{outline},{shadow},{align},40,40,{marginv},1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
@@ -294,9 +297,30 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
         align = 2
     marginv = max(0, min(800, int(opts.get("marginv", 36))))
     bold = -1 if opts.get("bold") else 0
-    outline = max(1, round(size / 12))
     chars = int(opts.get("chars", 0) or 0)
     maxlines = 1 if int(opts.get("maxlines", 2) or 2) == 1 else 2
+
+    # okraj (uživatelský, jinak automatický dle velikosti)
+    outline = int(opts.get("outline", 0) or 0)
+    if outline <= 0:
+        outline = max(1, round(size / 12))
+    outline = max(0, min(20, outline))
+
+    # podklad pod titulky: 'box' = plný obdélník (BorderStyle 3), jinak jen okraj.
+    # průhlednost 0 % = plná barva, 100 % = neviditelné. ASS alfa: 00=plné, FF=průhledné.
+    bg = str(opts.get("bg", "none"))
+    bgalpha = max(0, min(100, int(opts.get("bgalpha", 35))))
+    a = format(round(bgalpha / 100 * 255), "02X")
+    if bg == "box":
+        border_style = 3
+        outline_colour = f"&H{a}000000"   # box je černý s danou průhledností (libass: OutlineColour)
+        back_colour = f"&H{a}000000"
+        shadow = 0
+    else:
+        border_style = 1                  # klasický černý okraj kolem písma
+        outline_colour = "&H00000000"
+        back_colour = "&H00000000"
+        shadow = 0
 
     # Vlastní ASS s WrapStyle:2 – počet řádků (1/2) je pevně daný, libass
     # dlouhý řádek sám nezalomí. ASS dáme vedle výstupu a ffmpeg pustíme s cwd
@@ -304,7 +328,9 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     vid_w, vid_h = get_video_size(video_path, log)
     src_text = srt_path.read_text(encoding="utf-8", errors="replace")
     ass_text = _build_ass(src_text, vid_w, vid_h, font, size, align, marginv,
-                          bold, outline, chars, maxlines)
+                          bold, outline, chars, maxlines,
+                          border_style=border_style, outline_colour=outline_colour,
+                          back_colour=back_colour, shadow=shadow)
     tmp_ass = output_path.with_suffix(".tmp.ass")
     tmp_ass.write_text(ass_text, encoding="utf-8")
     work_dir = tmp_ass.parent

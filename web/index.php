@@ -253,6 +253,15 @@
           </span></div>
         <label class="ae-row"><span>Tučně</span>
           <span class="ae-radios"><label><input type="checkbox" id="biBold"> tučné písmo</label></span></label>
+        <label class="ae-row"><span>Podklad</span>
+          <select id="biBg">
+            <option value="none">žádný (jen okraj)</option>
+            <option value="box">černý box (solid)</option>
+          </select></label>
+        <label class="ae-row"><span>Průhlednost podkladu (%)</span>
+          <input id="biBgAlpha" type="number" value="35" min="0" max="100"></label>
+        <label class="ae-row"><span>Okraj / box (px, 0 = auto)</span>
+          <input id="biOutline" type="number" value="0" min="0" max="20"></label>
         <div id="biMsg" class="status-line"></div>
         <div class="ae-actions">
           <button id="biStart" class="btn small primary">Spustit zapékání</button>
@@ -290,6 +299,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
