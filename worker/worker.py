@@ -55,14 +55,63 @@ def fail(jid, msg):
         pass
 
 
+def _clean_work() -> None:
+    """Smaže zbytky v worker_tmp (po pádu/restartu) – brání zaplnění disku."""
+    try:
+        for p in WORK.glob("*"):
+            try:
+                if p.is_file():
+                    p.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _download(url_params: dict, dest: Path) -> None:
     with requests.get(API, params=url_params, headers=HEAD,
                       stream=True, timeout=300) as r:
         r.raise_for_status()
+        expected = r.headers.get("Content-Length")
         with open(dest, "wb") as f:
             for chunk in r.iter_content(1 << 16):
                 if chunk:
                     f.write(chunk)
+    size = dest.stat().st_size
+    if size == 0:
+        raise RuntimeError("stažený soubor je prázdný")
+    if expected is not None and expected.isdigit() and int(expected) != size:
+        raise RuntimeError(f"neúplné stažení: {size}/{expected} B")
+
+
+def _upload_result(action: str, data: dict, file_specs: dict, timeout: int = 300):
+    """POST výsledku s 3 pokusy (síť/5xx) – ať se drahá práce nezahodí.
+    file_specs: {pole: (název_souboru, Path)}; soubory se otevírají znovu pro každý pokus."""
+    last = None
+    for attempt in range(3):
+        fhs = []
+        try:
+            files = {}
+            for field, (fname, path) in file_specs.items():
+                fh = open(path, "rb")
+                fhs.append(fh)
+                files[field] = (fname, fh)
+            r = requests.post(API, params={"action": action}, headers=HEAD,
+                              data=data, files=files, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last = e
+            print(f"[upload] {action} pokus {attempt + 1}/3 selhal: {e}")
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+        finally:
+            for fh in fhs:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+    raise last
 
 
 def process(job):
@@ -98,28 +147,20 @@ def process(job):
             "duration": dur, "backend": result.get("backend"), "model": result.get("model")}
     paths = exporters.export_all(result, WORK, jid, formats, meta)
 
-    # 5) nahraj výsledky zpět na web
-    fhs, files = [], {}
-    try:
-        for fmt in ["txt", "srt", "vtt", "json"]:
-            p = paths.get(fmt)
-            if p and Path(p).is_file():
-                fh = open(p, "rb")
-                fhs.append(fh)
-                files[fmt] = (f"{jid}.{fmt}", fh)
-        data = {"id": jid, "duration": dur,
-                "text_preview": (result.get("text") or "")[:20000]}
-        if fps is not None:
-            data["fps"] = fps
-        if vw and vh:
-            data["width"] = vw
-            data["height"] = vh
-        rr = requests.post(API, params={"action": "worker_result"}, headers=HEAD,
-                           data=data, files=files, timeout=300)
-        rr.raise_for_status()
-    finally:
-        for fh in fhs:
-            fh.close()
+    # 5) nahraj výsledky zpět na web (s retry, ať se drahý přepis nezahodí)
+    file_specs = {}
+    for fmt in ["txt", "srt", "vtt", "json"]:
+        p = paths.get(fmt)
+        if p and Path(p).is_file():
+            file_specs[fmt] = (f"{jid}.{fmt}", Path(p))
+    data = {"id": jid, "duration": dur,
+            "text_preview": (result.get("text") or "")[:20000]}
+    if fps is not None:
+        data["fps"] = fps
+    if vw and vh:
+        data["width"] = vw
+        data["height"] = vh
+    _upload_result("worker_result", data, file_specs)
 
     # úklid dočasných souborů
     for p in [src, wav, *[Path(v) for v in paths.values()]]:
@@ -267,8 +308,14 @@ def main():
         if not job:
             time.sleep(POLL)
             continue
+        jid = job.get("id")
+        if not jid:
+            print("[JOB] claim bez 'id', přeskočeno:", job)
+            time.sleep(POLL)
+            continue
         jtype = job.get("type", "transcribe")
-        print(f"[JOB] {job['id']} | typ={jtype} | {job.get('filename', job.get('source_id', ''))}")
+        print(f"[JOB] {jid} | typ={jtype} | {job.get('filename', job.get('source_id', ''))}")
+        _clean_work()   # úklid pozůstatků (i po pádu/restartu) před každým jobem
         try:
             if jtype == "burnin":
                 process_burnin(job)
@@ -278,7 +325,7 @@ def main():
                 process(job)
         except Exception as e:
             traceback.print_exc()
-            fail(job["id"], str(e))
+            fail(jid, str(e))
 
 
 if __name__ == "__main__":

@@ -120,8 +120,12 @@ def convert_to_wav(input_path: Union[str, Path], output_wav: Union[str, Path],
         str(output_wav),
     ]
     _log(log, "FFMPEG: " + " ".join(cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", **_popen_kwargs())
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
+                              timeout=1800, **_popen_kwargs())
+    except subprocess.TimeoutExpired:
+        raise FfmpegError("ffmpeg konverze trvala příliš dlouho (timeout 30 min).")
     if proc.returncode != 0:
         tail = (proc.stderr or "").strip().splitlines()[-15:]
         _log(log, "FFMPEG chyba:\n" + "\n".join(tail))
@@ -219,6 +223,12 @@ def _rewrap_srt(srt_text: str, chars: int, max_lines: int = 2) -> str:
     return "\n\n".join(out) + "\n"
 
 
+def _escape_ass(text: str) -> str:
+    """Escapuje znaky se speciálním významem v ASS ({ } \\), aby je libass
+    nebral jako override tagy (např. uvozovky/závorky z LLM korekce/překladu)."""
+    return (text or "").replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+
+
 def _srt_ts_to_ass(ts: str) -> str:
     """HH:MM:SS,mmm -> H:MM:SS.cc (ASS čas)."""
     ts = ts.strip().replace(".", ",")
@@ -246,7 +256,7 @@ def _build_ass(srt_text: str, vid_w: int, vid_h: int, font: str, size: int,
         lines = b.splitlines()
         if len(lines) >= 3 and "-->" in lines[1]:
             start, _, end = lines[1].partition("-->")
-            text = " ".join(l.strip() for l in lines[2:] if l.strip())
+            text = _escape_ass(" ".join(l.strip() for l in lines[2:] if l.strip()))
             wrapped = _wrap_line(text, wrap_chars, max_lines).replace("\n", "\\N")
             events.append(
                 f"Dialogue: 0,{_srt_ts_to_ass(start)},{_srt_ts_to_ass(end)},"
@@ -313,7 +323,8 @@ def _karaoke_segment(tokens: list, seg_start: float, seg_end: float,
     if cur:
         lines.append(cur)
     # \k = celé slovo se rozsvítí naráz, jakmile se vysloví (ne plynulý sweep \kf)
-    parts = ["".join(f"{{\\k{d}}}{w} " for w, d in ln).rstrip() for ln in lines]
+    # escapuje se JEN slovo, nikdy ne \k tag
+    parts = ["".join(f"{{\\k{d}}}{_escape_ass(w)} " for w, d in ln).rstrip() for ln in lines]
     return "\\N".join(parts)
 
 
