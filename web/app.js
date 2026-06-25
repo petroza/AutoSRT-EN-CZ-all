@@ -776,6 +776,11 @@ function loadBurninSettings() {
 async function requestTranslate() {
   const j = window.curJob; if (!j) return;
   $("#translateModal").classList.add("hidden");
+  const st = window.curTranslate && window.curTranslate.status;
+  if (st === "pending" || st === "translating" || st === "processing") {
+    setMsg("translateMsg", "Překlad už probíhá – počkej na dokončení.", "err");
+    return;   // zabraň závodu dvou překladů (smíchaný jazyk)
+  }
   setMsg("translateMsg", "Odesílám požadavek na překlad…", "");
   $("#translateDownloads").classList.add("hidden");
   const fd = new FormData();
