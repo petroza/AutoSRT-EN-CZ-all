@@ -282,8 +282,8 @@ def _sec_to_ass(sec: float) -> str:
 
 def _karaoke_segment(tokens: list, seg_start: float, seg_end: float,
                      chars: int, max_lines: int) -> str:
-    """Z tokenů {w,start,end} sestaví karaoke text s \\kf tagy (fill po slovech)
-    a zlomy \\N. Bez časů slov rozloží trvání poměrově dle délky slov."""
+    """Z tokenů {w,start,end} sestaví karaoke text s \\k tagy (celé slovo se
+    rozsvítí naráz) a zlomy \\N. Bez časů slov rozloží trvání poměrově."""
     words = [(t.get("w") or "").strip() for t in tokens]
     words = [w for w in words if w]
     if not words:
@@ -312,7 +312,8 @@ def _karaoke_segment(tokens: list, seg_start: float, seg_end: float,
         curlen += len(w) + (1 if curlen else 0)
     if cur:
         lines.append(cur)
-    parts = ["".join(f"{{\\kf{d}}}{w} " for w, d in ln).rstrip() for ln in lines]
+    # \k = celé slovo se rozsvítí naráz, jakmile se vysloví (ne plynulý sweep \kf)
+    parts = ["".join(f"{{\\k{d}}}{w} " for w, d in ln).rstrip() for ln in lines]
     return "\\N".join(parts)
 
 
