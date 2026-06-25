@@ -665,6 +665,15 @@ function updateBurninPreview() {
   const pw = box.clientWidth;
   if (!pw) { requestAnimationFrame(updateBurninPreview); return; }   // okno ještě nemá šířku
   box.style.height = Math.round(pw * vh / vw) + "px";                // pevná výška dle poměru videa
+  // kritické styly inline (nezávisle na CSS cache)
+  box.style.position = "relative";
+  box.style.overflow = "hidden";
+  box.style.borderRadius = "8px";
+  box.style.background = "linear-gradient(165deg,#41597a 0%,#5b6f63 55%,#3f4d34 100%)";
+  txt.style.position = "absolute";
+  txt.style.left = "0"; txt.style.right = "0";
+  txt.style.padding = "0 5%"; txt.style.boxSizing = "border-box";
+  txt.style.textAlign = "center";
   const scale = pw / vw;
   const size = parseInt($("#biSize").value, 10) || 24;
   const margin = parseInt($("#biMargin").value, 10) || 36;
