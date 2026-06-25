@@ -167,6 +167,10 @@ select:focus,input:focus{border-color:var(--accent)}
   border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .bi-prev-text{position:absolute;left:0;right:0;padding:0 5%;box-sizing:border-box;
   text-align:center;white-space:normal;word-break:break-word}
+/* editor přeloženého titulku po řádcích */
+.tr-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.tr-edit-time{font-size:12px;color:var(--txt-mute);min-width:70px;font-variant-numeric:tabular-nums}
+.tr-edit-line{flex:1;min-width:0;width:auto}
 .ae-preview{margin-top:12px;max-height:190px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
 .ae-prev-head{padding:5px 10px;font-size:11px;font-weight:700;color:var(--txt-dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
 .ae-prev-table{width:100%;border-collapse:collapse;font-size:11px}

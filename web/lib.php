@@ -143,6 +143,7 @@ function all_jobs(): array {
     foreach (glob(JOB_DIR . '/*.json') as $f) {
         $j = json_decode((string)file_get_contents($f), true);
         if (is_array($j)) $out[] = $j;
+        else error_log("all_jobs: poškozený JSON přeskočen: $f");
     }
     usort($out, fn($a, $b) => strcmp($b['created_at'] ?? '', $a['created_at'] ?? ''));
     return $out;

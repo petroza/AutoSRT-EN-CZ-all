@@ -352,7 +352,12 @@ function closeWordMenu() { $("#wordMenu").classList.add("hidden"); }
 function editLine(si) {
   const seg = edState.segs[si];
   const v = prompt("Uprav celý řádek titulku:", segText(seg));
-  if (v != null) { seg.manual = v.trim(); renderEditor(); }
+  if (v != null) {
+    const t = v.trim();
+    if (t === "") delete seg.manual;   // prázdné -> zpět na původní tokeny
+    else seg.manual = t;
+    renderEditor();
+  }
 }
 
 function fmtTime(s) {
@@ -365,10 +370,10 @@ async function saveEdits() {
   $("#edMsg").textContent = "Ukládám a přegenerovávám titulky…";
   const segments = edState.segs.map(s => ({ start: s.start, end: s.end, text: segText(s) }));
   try {
-    await fetch(`${API}?action=save_edits`, {
+    await api("save_edits", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: edState.id, segments }),
-    }).then(async r => { if (!r.ok) throw new Error((await r.json()).error || ("HTTP " + r.status)); });
+    });
     $("#edMsg").textContent = "✓ Uloženo. Titulky přegenerovány.";
     // obnov náhled + odkazy (cache-bust)
     try {
@@ -934,13 +939,12 @@ async function openTransEditor() {
     const body = $("#trEditBody"); body.innerHTML = "";
     segs.forEach(function (s) {
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
+      row.className = "tr-edit-row";
       const lab = document.createElement("span");
-      lab.style.cssText = "font-size:12px;color:#8a8f98;min-width:70px;font-variant-numeric:tabular-nums";
+      lab.className = "tr-edit-time";
       lab.textContent = fmtSec(s.start) + "–" + fmtSec(s.end);
       const inp = document.createElement("input");
       inp.className = "tr-edit-line"; inp.type = "text"; inp.value = s.text;
-      inp.style.cssText = "flex:1;min-width:0;background:#0a0c0f;border:1px solid #2a2e35;color:#fff;border-radius:4px;padding:5px 7px;font-size:14px";
       row.appendChild(lab); row.appendChild(inp); body.appendChild(row);
     });
     $("#trEditMsg").textContent = segs.length + " titulků – uprav text a ulož";

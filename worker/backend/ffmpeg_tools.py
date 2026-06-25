@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import threading
+import time
 import wave
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -449,13 +451,31 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
 
     err_path = output_path.with_suffix(".tmp.err")
     rc = 1
+    stalled = {"v": False}
+    proc = None
     try:
         with open(err_path, "w", encoding="utf-8", errors="replace") as errf:
             proc = subprocess.Popen(
                 cmd, cwd=str(work_dir), stdout=subprocess.PIPE, stderr=errf,
                 text=True, encoding="utf-8", errors="replace", **_popen_kwargs())
+            # watchdog: zabije zaseknutý ffmpeg, když 10 min nepřibude žádný řádek
+            activity = [time.time()]
+
+            def _watchdog():
+                while proc.poll() is None:
+                    if time.time() - activity[0] > 600:
+                        stalled["v"] = True
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                        return
+                    time.sleep(5)
+
+            threading.Thread(target=_watchdog, daemon=True).start()
             last = -1
             for line in proc.stdout:
+                activity[0] = time.time()
                 line = line.strip()
                 us = None
                 if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
@@ -475,6 +495,9 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
                 p.unlink(missing_ok=True)
             except Exception:
                 pass
+
+    if stalled["v"]:
+        raise FfmpegError("ffmpeg zapékání se zaseklo (10 min bez postupu) – ukončeno.")
 
     err = ""
     try:
