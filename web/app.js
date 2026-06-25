@@ -29,12 +29,14 @@ function uploadWithProgress(fd, onProgress) {
 }
 
 const STATUS_TXT = { uploading: "Nahrávám…", pending: "Ve frontě", processing: "Zpracovává worker…", done: "Hotovo", error: "Chyba" };
-let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null, translatePollTimer = null;
+let selectedFile = null, currentId = null, pollTimer = null, burninPollTimer = null, translatePollTimer = null, openToken = 0;
 
 /* ---- login ---- */
 async function boot() {
-  const s = await api("status");
-  if (s.logged_in) showApp(s); else showLogin();
+  try {
+    const s = await api("status");
+    if (s.logged_in) showApp(s); else showLogin();
+  } catch (e) { showLogin(); }   // bez bílé obrazovky při výpadku
 }
 function showLogin() {
   $("#loginView").classList.remove("hidden");
@@ -58,7 +60,10 @@ $("#loginForm").addEventListener("submit", async (e) => {
   try { await api("login", { method: "POST", body: fd }); boot(); }
   catch (err) { $("#loginErr").textContent = err.message; }
 });
-$("#btnLogout").addEventListener("click", async () => { await api("logout", { method: "POST" }); showLogin(); });
+$("#btnLogout").addEventListener("click", async () => {
+  try { await api("logout", { method: "POST" }); } catch (e) { /* i tak odhlásit */ }
+  finally { clearInterval(pollTimer); clearTimeout(burninPollTimer); clearTimeout(translatePollTimer); showLogin(); }
+});
 
 /* ---- upload ---- */
 function pickFile(f) {
@@ -143,10 +148,11 @@ async function sendChunk(id, blob) {
 /* ---- jobs ---- */
 async function loadJobs() {
   let data; try { data = await api("list"); } catch (e) { if (("" + e).includes("401")) showLogin(); return; }
+  const jobs = Array.isArray(data && data.jobs) ? data.jobs : [];
   const ul = $("#jobs"); ul.innerHTML = "";
-  if (!data.jobs.length) { ul.innerHTML = '<li class="job-meta" style="padding:6px">Zatím žádné zakázky.</li>'; return; }
+  if (!jobs.length) { ul.innerHTML = '<li class="job-meta" style="padding:6px">Zatím žádné zakázky.</li>'; return; }
   let anyActive = false;
-  for (const j of data.jobs) {
+  for (const j of jobs) {
     if (j.status === "pending" || j.status === "processing") anyActive = true;
     const li = document.createElement("li");
     li.className = "job" + (j.id === currentId ? " active" : "");
@@ -165,7 +171,7 @@ async function loadJobs() {
   }
   // pokud je otevřená aktivní zakázka, osvěž její náhled při dokončení
   if (currentId) {
-    const cur = data.jobs.find(x => x.id === currentId);
+    const cur = jobs.find(x => x.id === currentId);
     if (cur && cur.status === "done" && $("#downloads").classList.contains("hidden")) openJob(cur);
   }
   $("#workerPill").classList.toggle("ok", true);
@@ -174,6 +180,7 @@ async function loadJobs() {
 
 function openJob(j) {
   currentId = j.id;
+  const myToken = ++openToken;   // zahodit doběhlé async odpovědi staré zakázky
   window.curJob = j;
   window.curView = "orig";
   window.curViewExplicit = false;   // uživatel ještě ručně nevybral pohled
@@ -188,6 +195,7 @@ function openJob(j) {
   clearTimeout(burninPollTimer);
   if (canBurnin) {
     api("burnin_status&id=" + j.id).then(function(d) {
+      if (myToken !== openToken) return;   // mezitím přepnuto na jinou zakázku
       updateBurninUI(d.burnin);
       if (d.burnin && (d.burnin.status === "pending" || d.burnin.status === "processing" || d.burnin.status === "burning")) pollBurnin();
     }).catch(function() {});
@@ -199,6 +207,7 @@ function openJob(j) {
   clearTimeout(translatePollTimer);
   if (canTranslate) {
     api("translate_status&id=" + j.id).then(function(d) {
+      if (myToken !== openToken) return;
       updateTranslateUI(d.translate);
       if (d.translate && (d.translate.status === "pending" || d.translate.status === "translating" || d.translate.status === "processing")) pollTranslate();
     }).catch(function() {});
@@ -233,7 +242,17 @@ async function delJob(id) {
   if (!confirm("Smazat tuto zakázku a její soubory?")) return;
   const fd = new FormData(); fd.append("id", id);
   try { await api("delete", { method: "POST", body: fd });
-    if (id === currentId) { currentId = null; $("#preview").textContent = "Vyber zakázku ze seznamu."; $("#preview").classList.add("muted"); $("#downloads").classList.add("hidden"); }
+    if (id === currentId) {
+      currentId = null; ++openToken; window.curJob = null; window.curTranslate = null;
+      clearTimeout(burninPollTimer); clearTimeout(translatePollTimer);
+      const pv = $("#preview");
+      pv.textContent = "Vyber zakázku ze seznamu."; pv.classList.add("muted");
+      pv.contentEditable = "false"; pv.style.outline = ""; pv.removeAttribute("title");
+      ["#downloads", "#burninSection", "#translateSection", "#tvSaveText", "#tvHint",
+       "#aeModal", "#burninModal", "#translateModal", "#trEditModal", "#editor"]
+        .forEach(s => { const el = $(s); if (el) el.classList.add("hidden"); });
+      ["btnEditor", "btnAE", "btnBurnin", "btnTranslate"].forEach(b => $("#" + b).classList.add("hidden"));
+    }
     loadJobs();
   } catch (e) { alert("Smazání selhalo: " + e.message); }
 }
@@ -320,8 +339,8 @@ function openWordMenu(ev, si, ti) {
     if (v != null && v.trim() !== "") { t.cur = v.trim(); t.manualEdited = true; }
   });
   menu.classList.remove("hidden");
-  const x = Math.min(ev.clientX, window.innerWidth - 200);
-  const y = Math.min(ev.clientY + 6, window.innerHeight - 140);
+  const x = Math.max(6, Math.min(ev.clientX, window.innerWidth - 200));
+  const y = Math.max(6, Math.min(ev.clientY + 6, window.innerHeight - 140));
   menu.style.left = x + "px"; menu.style.top = y + "px";
 }
 function closeWordMenu() { $("#wordMenu").classList.add("hidden"); }
@@ -367,10 +386,13 @@ function openCorrector() {
 }
 $("#btnEditor").addEventListener("click", openCorrector);
 $("#edClose").addEventListener("click", () => { $("#editor").classList.add("hidden"); closeWordMenu(); });
-$("#edFixAll").addEventListener("click", () => { edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.w; })); renderEditor(); });
-$("#edRevertAll").addEventListener("click", () => { edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.orig; })); renderEditor(); });
+$("#edFixAll").addEventListener("click", () => { if (!edState) return; edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.w; })); renderEditor(); });
+$("#edRevertAll").addEventListener("click", () => { if (!edState) return; edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.orig; })); renderEditor(); });
 $("#edSave").addEventListener("click", saveEdits);
 document.addEventListener("click", closeWordMenu);
+document.addEventListener("scroll", closeWordMenu, true);   // i vnitřní scroll (mobil)
+document.addEventListener("touchmove", closeWordMenu, { passive: true });
+window.addEventListener("resize", closeWordMenu);
 
 /* =====================  EXPORT PRO AFTER EFFECTS  ===================== */
 // Rozdělí text na titulky respektující 2D omezení (řádky × znaků).
@@ -573,9 +595,11 @@ async function requestBurnin() {
 }
 async function pollBurnin() {
   const j = window.curJob; if (!j) return;
+  const jobId = j.id;
   clearTimeout(burninPollTimer);
   try {
-    const data = await api("burnin_status&id=" + j.id);
+    const data = await api("burnin_status&id=" + jobId);
+    if (!window.curJob || window.curJob.id !== jobId) return;   // mezitím přepnuto
     updateBurninUI(data.burnin);
     if (data.burnin && (data.burnin.status === "pending" || data.burnin.status === "processing" || data.burnin.status === "burning")) {
       burninPollTimer = setTimeout(pollBurnin, 3000);
@@ -793,10 +817,11 @@ async function requestTranslate() {
 }
 async function pollTranslate() {
   const j = window.curJob; if (!j) return;
+  const jobId = j.id;
   clearTimeout(translatePollTimer);
   try {
-    const data = await api("translate_status&id=" + j.id);
-    const wasRunning = !!translatePollTimer || (window.curTranslate && window.curTranslate.status !== "done");
+    const data = await api("translate_status&id=" + jobId);
+    if (!window.curJob || window.curJob.id !== jobId) return;   // mezitím přepnuto
     updateTranslateUI(data.translate);
     if (data.translate && (data.translate.status === "pending" || data.translate.status === "translating" || data.translate.status === "processing")) {
       translatePollTimer = setTimeout(pollTranslate, 3000);
