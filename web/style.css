@@ -1,7 +1,7 @@
 /* PZ Titulkovač - tmavý broadcast styl */
 :root{
   --bg:#0d0f12;--bg-2:#14171c;--panel:#161a20;--panel-2:#1b2027;
-  --line:#262c35;--line-2:#303843;--txt:#d7dde6;--txt-dim:#8a93a0;--txt-mute:#5c6573;
+  --line:#262c35;--line-2:#303843;--txt:#d7dde6;--txt-dim:#9aa3b0;--txt-mute:#7d8794;
   --accent:#25d0c0;--accent-2:#2f8cff;--ok:#36c275;--bad:#ff5566;--warn:#ffb02e;
   --radius:8px;--mono:"JetBrains Mono","Cascadia Code","Consolas",ui-monospace,monospace;
   --sans:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;
@@ -177,6 +177,19 @@ select:focus,input:focus{border-color:var(--accent)}
 
 .footer{text-align:center;padding:12px;font-family:var(--mono);font-size:10px;color:var(--txt-mute);border-top:1px solid var(--line)}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
+
+/* viditelný focus pro klávesnici/přístupnost */
+.btn:focus-visible,.ae-tab:focus-visible,.job:focus-visible,.job-del:focus-visible,
+.ed-pen:focus-visible,.word-menu button:focus-visible,select:focus-visible,
+input:focus-visible,.tok:focus-visible,a.btn:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+
+/* dynamická výška viewportu (iOS lišta) – progressive enhancement */
+@supports(height:100dvh){
+  body{min-height:100dvh}
+  .editor-box,.ae-box{max-height:92dvh}
+}
+
 @media(max-width:860px){.layout{grid-template-columns:1fr}}
 @media(max-width:560px){
   .layout{padding:10px;gap:10px}
@@ -185,11 +198,15 @@ select:focus,input:focus{border-color:var(--accent)}
   .btn.small{padding:8px 12px;font-size:12px}
   .preview{max-height:46vh;font-size:14px}
   .jobs{max-height:none}               /* na mobilu bez vnořeného scrollu */
-  .editor-box{width:96vw;max-height:90vh}
   .ed-seg{grid-template-columns:54px 1fr auto;gap:6px}
   .ed-time{font-size:9px}
   .head-tools{gap:6px}
   .burnin-section{gap:8px}
+  /* dotykové cíle aspoň ~40px */
+  .job-del,.ed-pen{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  /* modály: nahoře + scroll, ať je aktivní pole nad klávesnicí */
+  .editor-overlay,.ae-overlay{align-items:flex-start;padding:8px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .editor-box,.ae-box{max-height:none;width:96vw;padding-bottom:35vh}
 }
 @media(max-width:500px){
   .ae-box{padding:14px}

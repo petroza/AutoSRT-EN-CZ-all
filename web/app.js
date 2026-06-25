@@ -162,7 +162,7 @@ async function loadJobs() {
       <div class="job-meta">${window.ROLE === "admin" && j.owner ? "👤" + esc(j.owner) + " · " : ""}${esc(j.language)} · ${esc((j.created_at || "").slice(5, 16))}${j.duration ? " · " + j.duration.toFixed(1) + "s" : ""}</div>
       <div class="job-right">
         <span class="badge ${j.status}">${esc(STATUS_TXT[j.status] || j.status)}</span>
-        <button class="job-del" title="Smazat">✕</button>
+        <button class="job-del" title="Smazat" aria-label="Smazat zakázku">✕</button>
       </div>
       ${showBar ? `<div class="jbar"><i style="width:${j.progress || 0}%"></i></div>` : ""}`;
     li.addEventListener("click", e => { if (e.target.classList.contains("job-del")) return; openJob(j); });
@@ -393,6 +393,14 @@ document.addEventListener("click", closeWordMenu);
 document.addEventListener("scroll", closeWordMenu, true);   // i vnitřní scroll (mobil)
 document.addEventListener("touchmove", closeWordMenu, { passive: true });
 window.addEventListener("resize", closeWordMenu);
+// ESC zavře otevřené menu/modály
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  closeWordMenu();
+  ["#editor", "#aeModal", "#burninModal", "#translateModal", "#trEditModal"].forEach((s) => {
+    const el = $(s); if (el && !el.classList.contains("hidden")) el.classList.add("hidden");
+  });
+});
 
 /* =====================  EXPORT PRO AFTER EFFECTS  ===================== */
 // Rozdělí text na titulky respektující 2D omezení (řádky × znaků).

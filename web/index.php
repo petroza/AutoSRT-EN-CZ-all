@@ -11,7 +11,7 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -85,7 +85,7 @@ header('Pragma: no-cache');
       <section class="col col-right">
         <div class="card grow">
           <div class="card-head"><h2>Zakázky / titulky</h2>
-            <button id="btnRefresh" class="btn small ghost" title="Obnovit">↻</button>
+            <button id="btnRefresh" class="btn small ghost" title="Obnovit" aria-label="Obnovit seznam zakázek">↻</button>
           </div>
           <ul id="jobs" class="jobs"></ul>
         </div>
@@ -342,6 +342,6 @@ header('Pragma: no-cache');
       </div>
     </div>
 
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
