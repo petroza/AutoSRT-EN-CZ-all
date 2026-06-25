@@ -104,6 +104,10 @@
             <div class="burnin-info">
               <div id="translateMsg" class="status-line"></div>
               <div id="translateProg" class="upprog hidden"><i id="translateBar"></i></div>
+              <div id="translateView" class="hidden" style="display:flex;gap:6px;margin-top:6px">
+                <button id="tvOrig" class="btn small ghost" type="button">Originál</button>
+                <button id="tvTrans" class="btn small" type="button">Překlad</button>
+              </div>
             </div>
             <div id="translateDownloads" class="downloads hidden"></div>
           </div>
@@ -313,6 +317,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

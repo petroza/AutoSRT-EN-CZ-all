@@ -123,6 +123,7 @@ function translate_public(array $tr): array {
         'id' => $tr['id'] ?? '', 'status' => $tr['status'] ?? 'pending',
         'progress' => (int)($tr['progress'] ?? 0), 'error' => $tr['error'] ?? null,
         'target' => $tr['target'] ?? '', 'finished_at' => $tr['finished_at'] ?? null,
+        'text' => $tr['text_preview'] ?? '',
     ];
 }
 function delete_translate_files(array $tr): void {

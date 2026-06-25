@@ -175,6 +175,7 @@ async function loadJobs() {
 function openJob(j) {
   currentId = j.id;
   window.curJob = j;
+  window.curView = "orig";
   document.querySelectorAll(".job").forEach(el => el.classList.remove("active"));
   const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor"), ae = $("#btnAE");
   const canEdit = j.status === "done" && j.outputs && j.outputs.json;
@@ -627,6 +628,7 @@ function parseSrt(txt) {
 }
 $("#btnBurnin").addEventListener("click", async function () {
   $("#biMsg").textContent = "";
+  loadBurninSettings();                         // poslední použité nastavení
   fillSubsSelect($("#biSubs"));                 // hned z toho, co je známo
   // karaoke jen když je k dispozici JSON (časy slov)
   var hasJson = !!(window.curJob && window.curJob.outputs && window.curJob.outputs.json);
@@ -724,10 +726,32 @@ function updateBurninPreview() {
   else txt.style.bottom = m;
 }
 ["input", "change"].forEach(function (ev) {
-  $("#burninModal").addEventListener(ev, updateBurninPreview);
+  $("#burninModal").addEventListener(ev, function () { updateBurninPreview(); saveBurninSettings(); });
 });
 $("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
 $("#biStart").addEventListener("click", requestBurnin);
+
+/* ---- zapamatování posledního nastavení titulků (localStorage) ---- */
+var BI_VAL_KEYS = ["biFont", "biSize", "biMargin", "biChars", "biBg", "biBgAlpha", "biOutline", "biMode", "biHi"];
+function saveBurninSettings() {
+  try {
+    const s = {};
+    BI_VAL_KEYS.forEach(function (id) { const e = $("#" + id); if (e) s[id] = e.value; });
+    s.biPos = (document.querySelector('input[name=biPos]:checked') || {}).value;
+    s.biLines = (document.querySelector('input[name=biLines]:checked') || {}).value;
+    s.biBold = $("#biBold").checked;
+    localStorage.setItem("pzBurnin", JSON.stringify(s));
+  } catch (e) { /* localStorage nedostupné */ }
+}
+function loadBurninSettings() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem("pzBurnin") || "null"); } catch (e) { s = null; }
+  if (!s) return;
+  BI_VAL_KEYS.forEach(function (id) { const e = $("#" + id); if (e && s[id] != null) e.value = s[id]; });
+  if (s.biPos) { const r = document.querySelector('input[name=biPos][value="' + s.biPos + '"]'); if (r) r.checked = true; }
+  if (s.biLines) { const r2 = document.querySelector('input[name=biLines][value="' + s.biLines + '"]'); if (r2) r2.checked = true; }
+  if (typeof s.biBold === "boolean") $("#biBold").checked = s.biBold;
+}
 
 /* =====================  PŘEKLAD TITULKŮ  ===================== */
 async function requestTranslate() {
@@ -748,11 +772,29 @@ async function pollTranslate() {
   clearTimeout(translatePollTimer);
   try {
     const data = await api("translate_status&id=" + j.id);
+    const wasRunning = !!translatePollTimer || (window.curTranslate && window.curTranslate.status !== "done");
     updateTranslateUI(data.translate);
     if (data.translate && (data.translate.status === "pending" || data.translate.status === "translating" || data.translate.status === "processing")) {
       translatePollTimer = setTimeout(pollTranslate, 3000);
+    } else if (data.translate && data.translate.status === "done") {
+      setPreviewView("trans");        // překlad doběhl -> rovnou ukázat přeložený text
     }
   } catch (e) { /* tiché selhání při pollingu */ }
+}
+// přepne text v náhledu mezi originálem a překladem
+function setPreviewView(which) {
+  const pv = $("#preview"), j = window.curJob, tr = window.curTranslate;
+  if (!pv || !j) return;
+  const hasTrans = tr && tr.status === "done" && tr.text;
+  if (which === "trans" && hasTrans) {
+    pv.classList.remove("muted"); pv.textContent = tr.text;
+    $("#tvTrans").classList.remove("ghost"); $("#tvOrig").classList.add("ghost");
+    window.curView = "trans";
+  } else {
+    pv.classList.remove("muted"); pv.textContent = j.text_preview || "(prázdný výstup)";
+    $("#tvOrig").classList.remove("ghost"); $("#tvTrans").classList.add("ghost");
+    window.curView = "orig";
+  }
 }
 function updateTranslateUI(tr) {
   window.curTranslate = tr || null;   // pro výběr titulků v zapékání / AE
@@ -760,6 +802,7 @@ function updateTranslateUI(tr) {
   if (!tr) { sec.classList.add("hidden"); return; }
   sec.classList.remove("hidden");
   dls.classList.add("hidden"); dls.innerHTML = "";
+  $("#translateView").classList.add("hidden");
   if (tr.status === "done") {
     setMsg("translateMsg", "✓ Překlad (" + (tr.target || "") + ") hotový.", "ok");
     pr.classList.add("hidden");
@@ -772,6 +815,11 @@ function updateTranslateUI(tr) {
       dls.appendChild(a);
     });
     dls.classList.remove("hidden");
+    if (tr.text) {                                   // přepínač náhledu originál/překlad
+      $("#translateView").classList.remove("hidden");
+      $("#tvTrans").textContent = "Překlad – " + (tr.target || "");
+      setPreviewView(window.curView || "orig");      // udrž aktuální pohled
+    }
   } else if (tr.status === "error") {
     setMsg("translateMsg", "Chyba překladu: " + (tr.error || "neznámá"), "err");
     pr.classList.add("hidden");
@@ -788,6 +836,8 @@ function updateTranslateUI(tr) {
 $("#btnTranslate").addEventListener("click", function () { $("#trMsg").textContent = ""; $("#translateModal").classList.remove("hidden"); });
 $("#trClose").addEventListener("click", function () { $("#translateModal").classList.add("hidden"); });
 $("#trStart").addEventListener("click", requestTranslate);
+$("#tvOrig").addEventListener("click", function () { setPreviewView("orig"); });
+$("#tvTrans").addEventListener("click", function () { setPreviewView("trans"); });
 
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }
