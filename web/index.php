@@ -1,10 +1,17 @@
-<?php require_once __DIR__ . '/lib.php'; ensure_dirs(); ?><!doctype html>
+<?php
+require_once __DIR__ . '/lib.php';
+ensure_dirs();
+// HTML necacheovat – ať mobil/desktop vždy načte aktuální app.js/style.css
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+?><!doctype html>
 <html lang="cs">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>PZ Titulkovač</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
   <!-- PŘIHLÁŠENÍ -->
@@ -334,6 +341,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>
