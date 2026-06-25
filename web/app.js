@@ -649,11 +649,13 @@ function biWrap(text, chars, maxLines) {
   if (maxLines === 1) return [words.join(" ")];
   const lines = []; let cur = "";
   for (const w of words) {
-    if (cur && (cur.length + 1 + w.length) > chars && lines.length < maxLines - 1) { lines.push(cur); cur = w; }
-    else cur = cur ? cur + " " + w : w;
+    if (cur && (cur.length + 1 + w.length) > chars) {
+      lines.push(cur); cur = w;
+      if (lines.length >= maxLines) { cur = ""; break; }   // dost řádků, zbytek zahodit
+    } else cur = cur ? cur + " " + w : w;
   }
-  if (cur) lines.push(cur);
-  return lines.slice(0, maxLines);
+  if (cur && lines.length < maxLines) lines.push(cur);
+  return lines;
 }
 function updateBurninPreview() {
   const box = $("#biPreview"), txt = $("#biPreviewText");
@@ -674,7 +676,11 @@ function updateBurninPreview() {
   const font = $("#biFont").value, mode = $("#biMode").value, hi = $("#biHi").value;
   const HEX = { yellow: "#ffe000", green: "#39d353", cyan: "#19d3e6", red: "#ff5555" };
 
-  let sample = ((window.curJob && window.curJob.text_preview) || "Ukázkový titulek vašeho videa").replace(/\s+/g, " ").trim();
+  // ukázka = JEN jedna titulková věta (ne celý přepis)
+  const full = ((window.curJob && window.curJob.text_preview) || "Ukázkový titulek vašeho videa").replace(/\s+/g, " ").trim();
+  let sample = (full.match(/^.*?[.!?](\s|$)/) || [full])[0].trim();
+  const cap = Math.max(24, chars * lines);
+  if (sample.length > cap) sample = sample.slice(0, cap).replace(/\s+\S*$/, "") + "…";
   const wl = biWrap(sample, chars, lines);
   let inner;
   if (mode === "karaoke") {
