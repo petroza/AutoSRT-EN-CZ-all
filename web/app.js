@@ -177,7 +177,7 @@ function openJob(j) {
   window.curJob = j;
   window.curView = "orig";
   window.curViewExplicit = false;   // uživatel ještě ručně nevybral pohled
-  $("#preview").contentEditable = "false"; $("#preview").style.outline = ""; $("#tvSaveText").classList.add("hidden");
+  $("#preview").contentEditable = "false"; $("#preview").style.outline = ""; $("#tvSaveText").classList.add("hidden"); $("#tvHint").classList.add("hidden");
   document.querySelectorAll(".job").forEach(el => el.classList.remove("active"));
   const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor"), ae = $("#btnAE");
   const canEdit = j.status === "done" && j.outputs && j.outputs.json;
@@ -809,12 +809,14 @@ function setPreviewView(which) {
     pv.classList.remove("muted"); pv.textContent = tr.text;
     pv.contentEditable = "true"; pv.style.outline = "1px dashed #2f9e74"; pv.title = "Klikni a přepiš text, pak ulož.";
     $("#tvSaveText").classList.remove("hidden");
+    $("#tvHint").classList.remove("hidden");
     $("#tvTrans").classList.remove("ghost"); $("#tvOrig").classList.add("ghost");
     window.curView = "trans";
   } else {
     pv.classList.remove("muted"); pv.textContent = j.text_preview || "(prázdný výstup)";
     pv.contentEditable = "false"; pv.style.outline = ""; pv.removeAttribute("title");
     $("#tvSaveText").classList.add("hidden");
+    $("#tvHint").classList.add("hidden");
     $("#tvOrig").classList.remove("ghost"); $("#tvTrans").classList.add("ghost");
     window.curView = "orig";
   }

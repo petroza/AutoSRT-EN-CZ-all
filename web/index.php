@@ -116,6 +116,7 @@ header('Pragma: no-cache');
                 <button id="tvTrans" class="btn small" type="button">Překlad</button>
                 <button id="tvEdit" class="btn small ghost" type="button">✎ Upravit po titulcích</button>
                 <button id="tvSaveText" class="btn small primary hidden" type="button">💾 Uložit přepsaný text</button>
+                <span id="tvHint" class="hidden" style="font-size:11px;color:var(--txt-mute);align-self:center">✎ klikni do textu nahoře a přepiš</span>
               </div>
             </div>
             <div id="translateDownloads" class="downloads hidden"></div>
@@ -341,6 +342,6 @@ header('Pragma: no-cache');
       </div>
     </div>
 
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
