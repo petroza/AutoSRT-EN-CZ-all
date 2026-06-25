@@ -16,6 +16,11 @@ function jsend($data, int $code = 200): void {
 
 function start_sess(): void {
     if (session_status() !== PHP_SESSION_ACTIVE) {
+        $https = ($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? '') !== 'off';
+        @session_set_cookie_params([
+            'lifetime' => 0, 'path' => '/', 'httponly' => true,
+            'samesite' => 'Lax', 'secure' => $https,
+        ]);
         session_name('TITKOV');
         @session_start();
     }
@@ -40,8 +45,8 @@ function require_worker(): void {
 // Ověří jméno+heslo proti USERS, vrátí ['user'=>..,'role'=>..] nebo null.
 function find_user(string $u, string $p): ?array {
     foreach (USERS as $name => $info) {
-        // porovnání v konstantním čase, odolné proti časovému útoku
-        if (hash_equals($name, $u) && hash_equals((string)$info['pass'], $p)) {
+        // jméno v konstantním čase, heslo přes bcrypt password_verify
+        if (hash_equals($name, $u) && password_verify($p, (string)$info['pass'])) {
             return ['user' => $name, 'role' => $info['role']];
         }
     }
@@ -197,9 +202,11 @@ function ts_fmt(float $sec, string $sep): string {
 function gen_srt(array $segs): string {
     $out = []; $i = 1;
     foreach ($segs as $s) {
+        $txt = trim((string)($s['text'] ?? ''));
+        if ($txt === '') continue;   // prázdné titulky nezapisovat
         $out[] = (string)$i++;
         $out[] = ts_fmt((float)($s['start'] ?? 0), ',') . ' --> ' . ts_fmt((float)($s['end'] ?? 0), ',');
-        $out[] = trim((string)($s['text'] ?? ''));
+        $out[] = $txt;
         $out[] = '';
     }
     return rtrim(implode("\n", $out)) . "\n";
@@ -208,8 +215,10 @@ function gen_srt(array $segs): string {
 function gen_vtt(array $segs): string {
     $out = ['WEBVTT', ''];
     foreach ($segs as $s) {
+        $txt = trim((string)($s['text'] ?? ''));
+        if ($txt === '') continue;
         $out[] = ts_fmt((float)($s['start'] ?? 0), '.') . ' --> ' . ts_fmt((float)($s['end'] ?? 0), '.');
-        $out[] = trim((string)($s['text'] ?? ''));
+        $out[] = $txt;
         $out[] = '';
     }
     return rtrim(implode("\n", $out)) . "\n";
@@ -217,6 +226,12 @@ function gen_vtt(array $segs): string {
 
 function now(): string {
     return date('Y-m-d H:i:s');
+}
+
+// Bezpečný základ názvu pro Content-Disposition (bez ", \, /, CR, LF).
+function safe_filename_base(string $filename): string {
+    $base = preg_replace('/[\\\\\/"\r\n]+/', '_', pathinfo($filename, PATHINFO_FILENAME));
+    return ($base === '' || $base === null) ? 'download' : $base;
 }
 
 // Naparsuje SRT na segmenty [{start,end,text}] (časy v sekundách).

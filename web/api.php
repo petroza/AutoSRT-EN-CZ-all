@@ -89,6 +89,19 @@ case 'upload':
 // žádný jednotlivý request nepřekročí limit velikosti těla na hostingu.
 case 'upload_init':
     require_login();
+    // úklid osiřelých rozpracovaných nahrávání (>6 h) + limit souběžných na uživatele
+    $me = current_user();
+    $uploadingCount = 0;
+    foreach (all_jobs() as $oj) {
+        if (($oj['status'] ?? '') !== 'uploading') continue;
+        if (time() - strtotime($oj['updated_at'] ?? '1970-01-01 00:00:00') > 21600) {
+            delete_job_files($oj);   // smaže i .part
+            continue;
+        }
+        if (($oj['owner'] ?? '') === $me) $uploadingCount++;
+    }
+    if ($uploadingCount >= 3)
+        jsend(['error' => 'Příliš mnoho rozpracovaných nahrávání – dokonči je nebo chvíli počkej'], 429);
     $orig = (string)($_POST['filename'] ?? '');
     $ext  = clean_ext(pathinfo($orig, PATHINFO_EXTENSION));
     if (!$ext) jsend(['error' => 'Nepodporovaný formát souboru'], 400);
@@ -173,7 +186,7 @@ case 'download':
     if (!in_array($fmt, OUT_FORMATS, true)) jsend(['error' => 'Neplatný formát'], 400);
     $path = OUT_DIR . '/' . clean_id($j['id']) . '.' . $fmt;
     if (!is_file($path)) jsend(['error' => 'Výstup neexistuje'], 404);
-    $base = pathinfo($j['filename'], PATHINFO_FILENAME);
+    $base = safe_filename_base($j['filename']);
     $mimes = ['txt'=>'text/plain','srt'=>'application/x-subrip','vtt'=>'text/vtt','json'=>'application/json'];
     header('Content-Type: ' . ($mimes[$fmt] ?? 'application/octet-stream') . '; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $base . '.' . $fmt . '"');
@@ -200,6 +213,7 @@ case 'save_edits':
     $j = load_job((string)($in['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
     if (!is_array($in['segments'] ?? null)) jsend(['error' => 'Chybí segmenty'], 400);
+    if (count($in['segments']) > 100000) jsend(['error' => 'Příliš mnoho segmentů'], 400);
 
     $id = clean_id($j['id']);
     $segs = []; $parts = [];
@@ -210,24 +224,24 @@ case 'save_edits':
     }
     $text = trim(implode(' ', $parts));
     $fmts = $j['formats'] ?? OUT_FORMATS;
-    if (in_array('txt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.txt", $text . "\n");
-    if (in_array('srt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.srt", gen_srt($segs));
-    if (in_array('vtt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.vtt", gen_vtt($segs));
+    if (in_array('txt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.txt", $text . "\n", LOCK_EX);
+    if (in_array('srt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.srt", gen_srt($segs), LOCK_EX);
+    if (in_array('vtt', $fmts, true))  file_put_contents(OUT_DIR . "/$id.vtt", gen_vtt($segs), LOCK_EX);
     if (in_array('json', $fmts, true)) {
         $doc = json_decode((string)@file_get_contents(OUT_DIR . "/$id.json"), true);
         if (!is_array($doc)) $doc = [];
-        $doc['text'] = $text; $doc['segments'] = $in['segments']; $doc['edited'] = true;
+        $doc['text'] = $text; $doc['segments'] = $segs; $doc['edited'] = true;  // sanitizované segmenty
         file_put_contents(OUT_DIR . "/$id.json",
-            json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            json_encode($doc, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
     }
-    // Pokud existuje burnin/překlad, invalidovat (titulky se změnily)
+    // Titulky se změnily -> invalidovat burnin/překlad (i čekající ve frontě).
     $bi = load_burnin_job($id);
-    if ($bi && in_array($bi['status'], ['done', 'error'], true)) {
+    if ($bi && in_array($bi['status'], ['done', 'error', 'pending'], true)) {
         $bi['status'] = 'outdated';
         save_burnin_job($bi);
     }
     $tr = load_translate_job($id);
-    if ($tr && in_array($tr['status'], ['done', 'error'], true)) {
+    if ($tr && in_array($tr['status'], ['done', 'error', 'pending'], true)) {
         $tr['status'] = 'outdated';
         save_translate_job($tr);
     }
@@ -239,7 +253,7 @@ case 'save_edits':
 // ---------- DELETE ----------------------------------------------------------
 case 'delete':
     require_login();
-    $j = load_job((string)($_REQUEST['id'] ?? ''));
+    $j = load_job((string)($_POST['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
     // Smaž i případný burnin / překlad
     $bi = load_burnin_job($j['id']);
@@ -255,6 +269,9 @@ case 'request_burnin':
     $j = load_job((string)($_POST['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
     if (($j['status'] ?? '') !== 'done') jsend(['error' => 'Job není dokončen'], 400);
+    $oldBi = load_burnin_job($j['id']);
+    if ($oldBi && in_array($oldBi['status'] ?? '', ['pending', 'processing', 'burning'], true))
+        jsend(['error' => 'Zapékání už probíhá – počkej na dokončení'], 409);
     $srt = OUT_DIR . '/' . clean_id($j['id']) . '.srt';
     if (!is_file($srt)) jsend(['error' => 'SRT soubor neexistuje – přidej SRT do formátů'], 400);
     $src = UP_DIR . '/' . clean_id($j['id']) . '.' . clean_ext($j['ext'] ?? '');
@@ -288,9 +305,12 @@ case 'request_burnin':
     $subs = (string)($_POST['subs'] ?? 'original');
     if ($subs !== 'original') {
         $t = preg_replace('/[^A-Za-z-]/', '', $subs);
+        $trJob = load_translate_job($j['id']);
         if (!in_array($subs, TRANSLATE_TARGETS, true)
-            || !is_file(OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt')) {
-            jsend(['error' => 'Překlad titulků není k dispozici'], 400);
+            || !is_file(OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt')
+            || !$trJob || ($trJob['status'] ?? '') !== 'done'
+            || ($trJob['target'] ?? '') !== $subs) {
+            jsend(['error' => 'Překlad titulků není k dispozici nebo je zastaralý'], 400);
         }
     }
 
@@ -318,9 +338,12 @@ case 'download_burnin':
     require_login();
     $j = load_job((string)($_GET['id'] ?? ''));
     if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $bi = load_burnin_job($j['id']);
+    if (!$bi || ($bi['status'] ?? '') !== 'done')
+        jsend(['error' => 'Video je zastaralé – zapeč znovu'], 409);
     $path = BURNIN_DIR . '/' . clean_id($j['id']) . '_burned.mp4';
     if (!is_file($path)) jsend(['error' => 'Video s titulky není k dispozici'], 404);
-    $base = pathinfo($j['filename'], PATHINFO_FILENAME);
+    $base = safe_filename_base($j['filename']);
     header('Content-Type: video/mp4');
     header('Content-Disposition: attachment; filename="' . $base . '_titulky.mp4' . '"');
     header('Content-Length: ' . filesize($path));
@@ -335,6 +358,9 @@ case 'request_translate':
     if (($j['status'] ?? '') !== 'done') jsend(['error' => 'Job není dokončen'], 400);
     if (!is_file(OUT_DIR . '/' . clean_id($j['id']) . '.json'))
         jsend(['error' => 'Chybí JSON s titulky (přidej JSON do formátů)'], 400);
+    $oldTr = load_translate_job($j['id']);
+    if ($oldTr && in_array($oldTr['status'] ?? '', ['pending', 'processing', 'translating'], true))
+        jsend(['error' => 'Překlad už probíhá – počkej na dokončení'], 409);
     $target = (string)($_POST['target'] ?? 'en-US');
     if (!in_array($target, TRANSLATE_TARGETS, true)) jsend(['error' => 'Nepodporovaný cílový jazyk'], 400);
     $tid = 'tr_' . clean_id($j['id']);
@@ -365,7 +391,7 @@ case 'download_translate':
     $t = preg_replace('/[^A-Za-z-]/', '', (string)($tr['target'] ?? ''));
     $path = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.' . $fmt;
     if (!is_file($path)) jsend(['error' => 'Soubor neexistuje'], 404);
-    $base = pathinfo($j['filename'], PATHINFO_FILENAME);
+    $base = safe_filename_base($j['filename']);
     $mimes = ['srt' => 'application/x-subrip', 'vtt' => 'text/vtt', 'txt' => 'text/plain'];
     header('Content-Type: ' . $mimes[$fmt] . '; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $base . '.' . $t . '.' . $fmt . '"');
@@ -384,16 +410,17 @@ case 'save_translate_edits':
     $base = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t;
     if (!is_file($base . '.srt')) jsend(['error' => 'Přeložené SRT chybí'], 400);
     $segs = parse_srt_segments((string)file_get_contents($base . '.srt'));
+    if (!$segs) jsend(['error' => 'Přeložené SRT je prázdné/poškozené'], 400);
     $lines = json_decode((string)($_POST['lines'] ?? '[]'), true);
     if (!is_array($lines)) jsend(['error' => 'Neplatná data'], 400);
     foreach ($segs as $i => &$sg) {
         if (array_key_exists($i, $lines)) $sg['text'] = trim((string)$lines[$i]);
     }
     unset($sg);
-    file_put_contents($base . '.srt', gen_srt($segs));
-    file_put_contents($base . '.vtt', gen_vtt($segs));
+    file_put_contents($base . '.srt', gen_srt($segs), LOCK_EX);
+    file_put_contents($base . '.vtt', gen_vtt($segs), LOCK_EX);
     $txt = trim(implode(' ', array_map(fn($s) => trim($s['text']), $segs)));
-    file_put_contents($base . '.txt', $txt);
+    file_put_contents($base . '.txt', $txt, LOCK_EX);
     $tr['text_preview'] = function_exists('mb_substr') ? mb_substr($txt, 0, 5000) : substr($txt, 0, 5000);
     $tr['edited'] = true;
     $tr['updated_at'] = now();
@@ -429,10 +456,10 @@ case 'save_translate_text':
         }
         $segs[$i]['text'] = $cur;
     }
-    file_put_contents($base . '.srt', gen_srt($segs));
-    file_put_contents($base . '.vtt', gen_vtt($segs));
+    file_put_contents($base . '.srt', gen_srt($segs), LOCK_EX);
+    file_put_contents($base . '.vtt', gen_vtt($segs), LOCK_EX);
     $txt = trim(implode(' ', array_map(fn($s) => trim($s['text']), $segs)));
-    file_put_contents($base . '.txt', $txt);
+    file_put_contents($base . '.txt', $txt, LOCK_EX);
     $tr['text_preview'] = function_exists('mb_substr') ? mb_substr($txt, 0, 5000) : substr($txt, 0, 5000);
     $tr['edited'] = true;
     $tr['updated_at'] = now();
@@ -443,29 +470,36 @@ case 'save_translate_text':
 
 case 'worker_claim':
     require_worker();
+    // Atomický claim: celé read-modify-write pod jedním zámkem, aby dva
+    // workeři nevzali tentýž job (LOCK_EX u zápisu chrání jen jeden soubor).
+    $lf = @fopen(JOB_DIR . '/.claim.lock', 'c');
+    if ($lf) flock($lf, LOCK_EX);
     $picked = null;
     $jobs = array_reverse(all_jobs()); // nejstarší pending první
     foreach ($jobs as $j) {
         if (($j['status'] ?? '') === 'pending') { $picked = $j; break; }
     }
     // nic nečeká? znovu zařaď osiřelé joby (worker spadl při zpracování) –
-    // processing/burning starší než 10 minut.
+    // jakýkoli průběžný stav (processing/burning/translating/…) starší 10 min.
     if (!$picked) {
         $nowts = time();
         foreach ($jobs as $j) {
             $st = $j['status'] ?? '';
-            if (($st === 'processing' || $st === 'burning')
+            if (!in_array($st, ['pending', 'done', 'error', 'outdated', 'uploading'], true)
                 && ($nowts - strtotime($j['updated_at'] ?? '1970-01-01 00:00:00')) > 600) {
                 $picked = $j;
                 break;
             }
         }
     }
+    if ($picked) {
+        $picked['status'] = 'processing';
+        $picked['progress'] = 5;
+        $picked['updated_at'] = now();
+        save_job_any($picked);
+    }
+    if ($lf) { flock($lf, LOCK_UN); fclose($lf); }
     if (!$picked) jsend(['job' => null]);
-    $picked['status'] = 'processing';
-    $picked['progress'] = 5;
-    $picked['updated_at'] = now();
-    save_job_any($picked);
     $jtype = $picked['type'] ?? 'transcribe';
     $payload = ['id' => $picked['id'], 'type' => $jtype];
     if ($jtype === 'burnin') {
@@ -506,10 +540,12 @@ case 'worker_burnin_srt':
     if (!$j) jsend(['error' => 'Job nenalezen'], 404);
     $path = OUT_DIR . '/' . clean_id($j['id']) . '.srt';
     $subs = (string)($_GET['subs'] ?? 'original');
-    if ($subs !== 'original' && in_array($subs, TRANSLATE_TARGETS, true)) {
+    if ($subs !== 'original') {
+        // přeložené titulky: žádný tichý fallback na originál (jinak špatný jazyk)
+        if (!in_array($subs, TRANSLATE_TARGETS, true)) jsend(['error' => 'Neplatný jazyk titulků'], 400);
         $t = preg_replace('/[^A-Za-z-]/', '', $subs);
-        $tp = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt';
-        if (is_file($tp)) $path = $tp;   // zapéct přeložené titulky
+        $path = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t . '.srt';
+        if (!is_file($path)) jsend(['error' => 'Přeložené SRT pro zapečení nenalezeno'], 404);
     }
     if (!is_file($path)) jsend(['error' => 'SRT nenalezeno'], 404);
     header('Content-Type: application/x-subrip; charset=utf-8');
@@ -522,7 +558,9 @@ case 'worker_progress':
     $j = load_job_flexible((string)($_POST['id'] ?? ''));
     if (!$j) jsend(['error' => 'Job nenalezen'], 404);
     if (isset($_POST['progress'])) $j['progress'] = max(0, min(100, (int)$_POST['progress']));
-    if (!empty($_POST['status']))  $j['status'] = (string)$_POST['status'];
+    // jen známé průběžné stavy (zabrání zaseknutí v neznámém stavu / duplicitnímu claimu)
+    $st = (string)($_POST['status'] ?? '');
+    if (in_array($st, ['processing', 'burning', 'translating'], true)) $j['status'] = $st;
     $j['updated_at'] = now();
     save_job_any($j);
     jsend(['ok' => true]);

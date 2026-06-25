@@ -1,20 +1,24 @@
 <?php
 // ============================================================
-//  PZ Titulkovač - konfigurace webu
+//  PZ Titulkovač - konfigurace webu  (ŠABLONA / placeholdery)
 //  (běží na PHP hostingu Forpsi, /www/titulkovac/)
+//  POZOR: do gitu commitovat JEN placeholdery. Skutečná hesla a token
+//  drž jen v nasazené verzi na serveru, NIKDY ne v repozitáři.
 // ============================================================
 
 // --- Účty do webu --------------------------------------------------------
 // role 'admin' vidí VŠECHNY zakázky; role 'user' vidí JEN svoje (admina nevidí).
-// !!! DŮLEŽITÉ: doplň skutečná hesla místo hvězdiček !!!
+// Hesla jsou bcrypt hash (password_hash); ověřuje se password_verify.
+// Hash vygeneruješ:  php -r 'echo password_hash("MojeHeslo", PASSWORD_DEFAULT);'
 const USERS = [
-    'PetrZ' => ['pass' => '2022UA***',      'role' => 'admin'],
-    'user'  => ['pass' => 'Grafika2026***', 'role' => 'user'],
+    'PetrZ' => ['pass' => '$2y$10$REPLACE_WITH_YOUR_OWN_BCRYPT_HASH______________________', 'role' => 'admin'],
+    'user'  => ['pass' => '$2y$10$REPLACE_WITH_YOUR_OWN_BCRYPT_HASH______________________', 'role' => 'user'],
 ];
 
 // --- Token pro workera ---------------------------------------------------
 // MUSÍ být STEJNÝ jako "worker_token" ve worker_config.json u workera.
-const WORKER_TOKEN = 'd839656e2cb8512f7e41dedd020dce525564f2697c87feb7';
+// Vygeneruj náhodný:  php -r 'echo bin2hex(random_bytes(24));'
+const WORKER_TOKEN = 'REPLACE_WITH_YOUR_OWN_RANDOM_TOKEN';
 
 // --- Limity / povolené hodnoty -------------------------------------------
 const MAX_UPLOAD_MB = 2048;   // chunked upload obchází limit těla requestu na hostingu

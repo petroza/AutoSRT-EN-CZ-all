@@ -2,8 +2,25 @@
 Options -Indexes
 DirectoryIndex index.php
 
-# konfiguraci a knihovny nikdy neservírovat jako text
+# konfiguraci a knihovny NIKDY neservírovat jako text (ani když selže PHP).
+# config.php/lib.php se jen includují, přímý HTTP přístup zamítáme.
 <FilesMatch "(config|lib)\.php$">
-  # config.php/lib.php se normálně includují, přímý přístup nevadí (jsou to PHP),
-  # ale pro jistotu povolíme jen include (přímé zobrazení vrátí prázdno).
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# zálohy/swap/dotfiles a citlivé přípony nikdy neservírovat
+<FilesMatch "(\.(bak|swp|swo|save|orig|tmp|log|sql)|~)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
 </FilesMatch>
