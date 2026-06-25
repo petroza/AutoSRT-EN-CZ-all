@@ -219,6 +219,24 @@ function now(): string {
     return date('Y-m-d H:i:s');
 }
 
+// Naparsuje SRT na segmenty [{start,end,text}] (časy v sekundách).
+function parse_srt_segments(string $srt): array {
+    $segs = [];
+    $blocks = preg_split('/\r?\n\s*\r?\n/', trim($srt));
+    foreach ($blocks as $b) {
+        $lines = preg_split('/\r?\n/', trim($b));
+        $ti = -1;
+        foreach ($lines as $k => $l) { if (strpos($l, '-->') !== false) { $ti = $k; break; } }
+        if ($ti < 0) continue;
+        if (!preg_match('/(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/', $lines[$ti], $m)) continue;
+        $start = $m[1] * 3600 + $m[2] * 60 + $m[3] + $m[4] / 1000;
+        $end   = $m[5] * 3600 + $m[6] * 60 + $m[7] + $m[8] / 1000;
+        $text = trim(implode(' ', array_slice($lines, $ti + 1)));
+        $segs[] = ['start' => $start, 'end' => $end, 'text' => $text];
+    }
+    return $segs;
+}
+
 // Veřejná (do UI/JSON) podoba jobu - bez interních cest.
 function public_job(array $j): array {
     return [

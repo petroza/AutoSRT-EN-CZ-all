@@ -373,6 +373,33 @@ case 'download_translate':
     readfile($path);
     exit;
 
+// PŘEKLAD: uložení ručních úprav (přepíše přeložené SRT/VTT/TXT, časy zůstanou)
+case 'save_translate_edits':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $tr = load_translate_job($j['id']);
+    if (!$tr || ($tr['status'] ?? '') !== 'done') jsend(['error' => 'Překlad neexistuje'], 400);
+    $t = preg_replace('/[^A-Za-z-]/', '', (string)($tr['target'] ?? ''));
+    $base = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t;
+    if (!is_file($base . '.srt')) jsend(['error' => 'Přeložené SRT chybí'], 400);
+    $segs = parse_srt_segments((string)file_get_contents($base . '.srt'));
+    $lines = json_decode((string)($_POST['lines'] ?? '[]'), true);
+    if (!is_array($lines)) jsend(['error' => 'Neplatná data'], 400);
+    foreach ($segs as $i => &$sg) {
+        if (array_key_exists($i, $lines)) $sg['text'] = trim((string)$lines[$i]);
+    }
+    unset($sg);
+    file_put_contents($base . '.srt', gen_srt($segs));
+    file_put_contents($base . '.vtt', gen_vtt($segs));
+    $txt = trim(implode(' ', array_map(fn($s) => trim($s['text']), $segs)));
+    file_put_contents($base . '.txt', $txt);
+    $tr['text_preview'] = function_exists('mb_substr') ? mb_substr($txt, 0, 5000) : substr($txt, 0, 5000);
+    $tr['edited'] = true;
+    $tr['updated_at'] = now();
+    save_translate_job($tr);
+    jsend(['ok' => true, 'text' => $tr['text_preview']]);
+
 // ========== WORKER (token) =================================================
 
 case 'worker_claim':

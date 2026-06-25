@@ -104,9 +104,10 @@
             <div class="burnin-info">
               <div id="translateMsg" class="status-line"></div>
               <div id="translateProg" class="upprog hidden"><i id="translateBar"></i></div>
-              <div id="translateView" class="hidden" style="display:flex;gap:6px;margin-top:6px">
+              <div id="translateView" class="hidden" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
                 <button id="tvOrig" class="btn small ghost" type="button">Originál</button>
                 <button id="tvTrans" class="btn small" type="button">Překlad</button>
+                <button id="tvEdit" class="btn small ghost" type="button">✎ Upravit překlad</button>
               </div>
             </div>
             <div id="translateDownloads" class="downloads hidden"></div>
@@ -317,6 +318,21 @@
       </div>
     </div>
 
-  <script src="app.js?v=21"></script>
+    <!-- ÚPRAVA PŘEKLADU -->
+    <div id="trEditModal" class="ae-overlay hidden">
+      <div class="ae-box">
+        <div class="ae-title">✎ Upravit překlad</div>
+        <div id="trEditMsg" class="status-line"></div>
+        <div id="trEditBody" style="max-height:50vh;overflow:auto;margin:8px 0"></div>
+        <div class="ae-actions">
+          <button id="trEditSave" class="btn small primary">Uložit změny</button>
+          <button id="trEditClose" class="btn small ghost">Zavřít</button>
+        </div>
+        <div class="ae-hint">Uprav text jednotlivých titulků – časování zůstane. Po uložení se
+          tvoje verze použije při zapékání i exportu do After Effects.</div>
+      </div>
+    </div>
+
+  <script src="app.js?v=22"></script>
 </body>
 </html>

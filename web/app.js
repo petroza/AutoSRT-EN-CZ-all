@@ -839,6 +839,49 @@ $("#trStart").addEventListener("click", requestTranslate);
 $("#tvOrig").addEventListener("click", function () { setPreviewView("orig"); });
 $("#tvTrans").addEventListener("click", function () { setPreviewView("trans"); });
 
+/* ---- ruční úprava překladu (časování zůstane) ---- */
+function fmtSec(s) { const m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ":" + (x < 10 ? "0" : "") + x; }
+async function openTransEditor() {
+  const j = window.curJob, tr = window.curTranslate;
+  if (!j || !tr || tr.status !== "done") return;
+  $("#trEditMsg").textContent = "Načítám…"; $("#trEditBody").innerHTML = "";
+  $("#trEditModal").classList.remove("hidden");
+  try {
+    const r = await fetch(API + "?action=download_translate&id=" + j.id + "&fmt=srt&t=" + Date.now());
+    if (!r.ok) throw new Error("nelze načíst překlad");
+    const segs = parseSrt(await r.text());
+    const body = $("#trEditBody"); body.innerHTML = "";
+    segs.forEach(function (s) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px";
+      const lab = document.createElement("span");
+      lab.style.cssText = "font-size:12px;color:#8a8f98;min-width:70px;font-variant-numeric:tabular-nums";
+      lab.textContent = fmtSec(s.start) + "–" + fmtSec(s.end);
+      const inp = document.createElement("input");
+      inp.className = "tr-edit-line"; inp.type = "text"; inp.value = s.text;
+      inp.style.cssText = "flex:1;min-width:0;background:#0a0c0f;border:1px solid #2a2e35;color:#fff;border-radius:4px;padding:5px 7px;font-size:14px";
+      row.appendChild(lab); row.appendChild(inp); body.appendChild(row);
+    });
+    $("#trEditMsg").textContent = segs.length + " titulků – uprav text a ulož";
+  } catch (e) { $("#trEditMsg").textContent = "Chyba: " + e.message; }
+}
+async function saveTransEdits() {
+  const j = window.curJob; if (!j) return;
+  const lines = [...document.querySelectorAll('#trEditBody .tr-edit-line')].map(function (i) { return i.value; });
+  $("#trEditMsg").textContent = "Ukládám…";
+  const fd = new FormData(); fd.append("id", j.id); fd.append("lines", JSON.stringify(lines));
+  try {
+    const res = await api("save_translate_edits", { method: "POST", body: fd });
+    if (window.curTranslate) window.curTranslate.text = res.text;
+    setPreviewView("trans");
+    $("#trEditModal").classList.add("hidden");
+    setMsg("translateMsg", "✓ Překlad upraven – zapékání/AE použijí tvou verzi.", "ok");
+  } catch (e) { $("#trEditMsg").textContent = "Chyba uložení: " + e.message; }
+}
+$("#tvEdit").addEventListener("click", openTransEditor);
+$("#trEditSave").addEventListener("click", saveTransEdits);
+$("#trEditClose").addEventListener("click", function () { $("#trEditModal").classList.add("hidden"); });
+
 /* ---- util ---- */
 function setMsg(id, txt, cls) { const el = $("#" + id); el.textContent = txt; el.className = "status-line" + (cls ? " " + cls : ""); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
