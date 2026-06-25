@@ -662,8 +662,10 @@ function updateBurninPreview() {
   if (!box || box.offsetParent === null) return;          // modal skrytý
   const vw = (window.curJob && window.curJob.width) || 1920;
   const vh = (window.curJob && window.curJob.height) || 1080;
-  box.style.aspectRatio = vw + " / " + vh;
-  const scale = (box.clientWidth || 360) / vw;
+  const pw = box.clientWidth;
+  if (!pw) { requestAnimationFrame(updateBurninPreview); return; }   // okno ještě nemá šířku
+  box.style.height = Math.round(pw * vh / vw) + "px";                // pevná výška dle poměru videa
+  const scale = pw / vw;
   const size = parseInt($("#biSize").value, 10) || 24;
   const margin = parseInt($("#biMargin").value, 10) || 36;
   const chars = parseInt($("#biChars").value, 10) || 42;
