@@ -212,6 +212,8 @@ def process_translate(job):
     for i, s in enumerate(segs):
         txt = (s.get("text") or "").strip()
         tr = asr_engine.llm_translate(txt, target) if txt else txt
+        if tr:  # korektura přeloženého textu (zachová cílový jazyk, opraví cizí slova/překlepy)
+            tr = asr_engine._llm_correct_chunk(tr, target)
         out_segs.append({"start": s.get("start", 0), "end": s.get("end", 0), "text": tr})
         progress(jid, "translating", 8 + int((i + 1) / n * 82))
 

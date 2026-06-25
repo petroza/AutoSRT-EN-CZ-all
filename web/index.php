@@ -107,7 +107,8 @@
               <div id="translateView" class="hidden" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
                 <button id="tvOrig" class="btn small ghost" type="button">Originál</button>
                 <button id="tvTrans" class="btn small" type="button">Překlad</button>
-                <button id="tvEdit" class="btn small ghost" type="button">✎ Upravit překlad</button>
+                <button id="tvEdit" class="btn small ghost" type="button">✎ Upravit po titulcích</button>
+                <button id="tvSaveText" class="btn small primary hidden" type="button">💾 Uložit přepsaný text</button>
               </div>
             </div>
             <div id="translateDownloads" class="downloads hidden"></div>
@@ -333,6 +334,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

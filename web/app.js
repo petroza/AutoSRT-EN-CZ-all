@@ -176,6 +176,7 @@ function openJob(j) {
   currentId = j.id;
   window.curJob = j;
   window.curView = "orig";
+  $("#preview").contentEditable = "false"; $("#preview").style.outline = ""; $("#tvSaveText").classList.add("hidden");
   document.querySelectorAll(".job").forEach(el => el.classList.remove("active"));
   const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor"), ae = $("#btnAE");
   const canEdit = j.status === "done" && j.outputs && j.outputs.json;
@@ -788,13 +789,30 @@ function setPreviewView(which) {
   const hasTrans = tr && tr.status === "done" && tr.text;
   if (which === "trans" && hasTrans) {
     pv.classList.remove("muted"); pv.textContent = tr.text;
+    pv.contentEditable = "true"; pv.style.outline = "1px dashed #2f9e74"; pv.title = "Klikni a přepiš text, pak ulož.";
+    $("#tvSaveText").classList.remove("hidden");
     $("#tvTrans").classList.remove("ghost"); $("#tvOrig").classList.add("ghost");
     window.curView = "trans";
   } else {
     pv.classList.remove("muted"); pv.textContent = j.text_preview || "(prázdný výstup)";
+    pv.contentEditable = "false"; pv.style.outline = ""; pv.removeAttribute("title");
+    $("#tvSaveText").classList.add("hidden");
     $("#tvOrig").classList.remove("ghost"); $("#tvTrans").classList.add("ghost");
     window.curView = "orig";
   }
+}
+async function saveTransText() {
+  const j = window.curJob; if (!j) return;
+  const text = ($("#preview").innerText || "").replace(/\s+/g, " ").trim();
+  if (!text) { setMsg("translateMsg", "Prázdný text.", "err"); return; }
+  setMsg("translateMsg", "Ukládám přepsaný text…", "");
+  const fd = new FormData(); fd.append("id", j.id); fd.append("text", text);
+  try {
+    const res = await api("save_translate_text", { method: "POST", body: fd });
+    if (window.curTranslate) window.curTranslate.text = res.text;
+    setPreviewView("trans");
+    setMsg("translateMsg", "✓ Text uložen – zapékání/AE použijí tvou verzi.", "ok");
+  } catch (e) { setMsg("translateMsg", "Chyba uložení: " + e.message, "err"); }
 }
 function updateTranslateUI(tr) {
   window.curTranslate = tr || null;   // pro výběr titulků v zapékání / AE
@@ -878,6 +896,7 @@ async function saveTransEdits() {
     setMsg("translateMsg", "✓ Překlad upraven – zapékání/AE použijí tvou verzi.", "ok");
   } catch (e) { $("#trEditMsg").textContent = "Chyba uložení: " + e.message; }
 }
+$("#tvSaveText").addEventListener("click", saveTransText);
 $("#tvEdit").addEventListener("click", openTransEditor);
 $("#trEditSave").addEventListener("click", saveTransEdits);
 $("#trEditClose").addEventListener("click", function () { $("#trEditModal").classList.add("hidden"); });

@@ -400,6 +400,45 @@ case 'save_translate_edits':
     save_translate_job($tr);
     jsend(['ok' => true, 'text' => $tr['text_preview']]);
 
+// PŘEKLAD: uložení přepsaného souvislého textu (rozloží poměrově do časů segmentů)
+case 'save_translate_text':
+    require_login();
+    $j = load_job((string)($_POST['id'] ?? ''));
+    if (!$j || !can_access($j)) jsend(['error' => 'Job nenalezen'], 404);
+    $tr = load_translate_job($j['id']);
+    if (!$tr || ($tr['status'] ?? '') !== 'done') jsend(['error' => 'Překlad neexistuje'], 400);
+    $t = preg_replace('/[^A-Za-z-]/', '', (string)($tr['target'] ?? ''));
+    $base = OUT_DIR . '/' . clean_id($j['id']) . '.' . $t;
+    if (!is_file($base . '.srt')) jsend(['error' => 'Přeložené SRT chybí'], 400);
+    $segs = parse_srt_segments((string)file_get_contents($base . '.srt'));
+    $text = trim((string)($_POST['text'] ?? ''));
+    if ($text === '' || !$segs) jsend(['error' => 'Prázdný text'], 400);
+    $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+    $nw = count($words); $n = count($segs);
+    $oldLens = array_map(fn($s) => max(1, mb_strlen($s['text'])), $segs);
+    $totalOld = max(1, array_sum($oldLens));
+    $totalChars = max(1, mb_strlen($text));
+    $wi = 0;
+    for ($i = 0; $i < $n; $i++) {
+        if ($i === $n - 1) { $segs[$i]['text'] = trim(implode(' ', array_slice($words, $wi))); break; }
+        $target = $totalChars * $oldLens[$i] / $totalOld;
+        $cur = '';
+        while ($wi < $nw && ($cur === '' || mb_strlen($cur) < $target)) {
+            $cur = ($cur === '') ? $words[$wi] : $cur . ' ' . $words[$wi];
+            $wi++;
+        }
+        $segs[$i]['text'] = $cur;
+    }
+    file_put_contents($base . '.srt', gen_srt($segs));
+    file_put_contents($base . '.vtt', gen_vtt($segs));
+    $txt = trim(implode(' ', array_map(fn($s) => trim($s['text']), $segs)));
+    file_put_contents($base . '.txt', $txt);
+    $tr['text_preview'] = function_exists('mb_substr') ? mb_substr($txt, 0, 5000) : substr($txt, 0, 5000);
+    $tr['edited'] = true;
+    $tr['updated_at'] = now();
+    save_translate_job($tr);
+    jsend(['ok' => true, 'text' => $tr['text_preview']]);
+
 // ========== WORKER (token) =================================================
 
 case 'worker_claim':
