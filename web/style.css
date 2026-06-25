@@ -162,6 +162,11 @@ select:focus,input:focus{border-color:var(--accent)}
 .burnin-section .status-line{margin-top:0}
 .burnin-info{flex:1;min-width:0}
 .burnin-info .upprog{margin-top:6px}
+.bi-preview{position:relative;width:100%;max-width:460px;margin:6px auto 4px;
+  background:linear-gradient(165deg,#41597a 0%,#5b6f63 55%,#3f4d34 100%);
+  border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.bi-prev-text{position:absolute;left:0;right:0;padding:0 5%;box-sizing:border-box;
+  text-align:center;white-space:normal;word-break:break-word}
 .ae-preview{margin-top:12px;max-height:190px;overflow-y:auto;border:1px solid var(--line);border-radius:6px}
 .ae-prev-head{padding:5px 10px;font-size:11px;font-weight:700;color:var(--txt-dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
 .ae-prev-table{width:100%;border-collapse:collapse;font-size:11px}

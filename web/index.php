@@ -226,6 +226,8 @@
     <div id="burninModal" class="ae-overlay hidden">
       <div class="ae-box">
         <div class="ae-title">🎞 Zapéct titulky do videa</div>
+        <div id="biPreview" class="bi-preview"><div id="biPreviewText" class="bi-prev-text"></div></div>
+        <div class="ae-hint" style="margin-top:-4px">Náhled velikosti a pozice (orientační).</div>
         <label class="ae-row"><span>Titulky</span>
           <select id="biSubs"><option value="original">originál</option></select></label>
         <label class="ae-row"><span>Režim</span>
@@ -311,6 +313,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

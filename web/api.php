@@ -478,6 +478,8 @@ case 'worker_result':
     $j['text_preview'] = (string)($_POST['text_preview'] ?? '');
     if (isset($_POST['duration'])) $j['duration'] = (float)$_POST['duration'];
     if (isset($_POST['fps']) && is_numeric($_POST['fps'])) $j['fps'] = (float)$_POST['fps'];
+    if (isset($_POST['width']) && is_numeric($_POST['width'])) $j['width'] = (int)$_POST['width'];
+    if (isset($_POST['height']) && is_numeric($_POST['height'])) $j['height'] = (int)$_POST['height'];
     $j['status'] = 'done';
     $j['progress'] = 100;
     $j['error'] = null;

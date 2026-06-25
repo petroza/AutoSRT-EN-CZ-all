@@ -635,11 +635,79 @@ $("#btnBurnin").addEventListener("click", async function () {
   if (!hasJson && $("#biMode").value === "karaoke") $("#biMode").value = "normal";
   $("#biHiRow").style.display = ($("#biMode").value === "karaoke") ? "" : "none";
   $("#burninModal").classList.remove("hidden");
+  setTimeout(updateBurninPreview, 0);           // až po vykreslení (kvůli šířce)
   await refreshCurTranslate();                  // a po dotažení znovu (kdyby překlad mezitím doběhl)
   fillSubsSelect($("#biSubs"));
 });
 $("#biMode").addEventListener("change", function () {
   $("#biHiRow").style.display = (this.value === "karaoke") ? "" : "none";
+});
+
+/* ---- živý náhled velikosti/pozice titulků v dialogu zapékání ---- */
+function biWrap(text, chars, maxLines) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  if (maxLines === 1) return [words.join(" ")];
+  const lines = []; let cur = "";
+  for (const w of words) {
+    if (cur && (cur.length + 1 + w.length) > chars && lines.length < maxLines - 1) { lines.push(cur); cur = w; }
+    else cur = cur ? cur + " " + w : w;
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, maxLines);
+}
+function updateBurninPreview() {
+  const box = $("#biPreview"), txt = $("#biPreviewText");
+  if (!box || box.offsetParent === null) return;          // modal skrytý
+  const vw = (window.curJob && window.curJob.width) || 1920;
+  const vh = (window.curJob && window.curJob.height) || 1080;
+  box.style.aspectRatio = vw + " / " + vh;
+  const scale = (box.clientWidth || 360) / vw;
+  const size = parseInt($("#biSize").value, 10) || 24;
+  const margin = parseInt($("#biMargin").value, 10) || 36;
+  const chars = parseInt($("#biChars").value, 10) || 42;
+  const lines = parseInt((document.querySelector('input[name=biLines]:checked') || {}).value, 10) || 2;
+  const align = (document.querySelector('input[name=biPos]:checked') || {}).value || "2";
+  const bold = $("#biBold").checked;
+  const bg = $("#biBg").value, bgalpha = parseInt($("#biBgAlpha").value, 10) || 0;
+  let outline = parseInt($("#biOutline").value, 10) || 0;
+  if (outline <= 0) outline = Math.max(1, Math.round(size / 12));
+  const font = $("#biFont").value, mode = $("#biMode").value, hi = $("#biHi").value;
+  const HEX = { yellow: "#ffe000", green: "#39d353", cyan: "#19d3e6", red: "#ff5555" };
+
+  let sample = ((window.curJob && window.curJob.text_preview) || "Ukázkový titulek vašeho videa").replace(/\s+/g, " ").trim();
+  const wl = biWrap(sample, chars, lines);
+  let inner;
+  if (mode === "karaoke") {
+    const total = wl.join(" ").split(/\s+/).length, colorN = Math.ceil(total * 0.6);
+    let idx = 0;
+    inner = wl.map(function (ln) {
+      return ln.split(/\s+/).map(function (w) {
+        idx++; return idx <= colorN ? '<span style="color:' + (HEX[hi] || "#ffe000") + '">' + esc(w) + "</span>" : esc(w);
+      }).join(" ");
+    }).join("<br>");
+  } else {
+    inner = wl.map(esc).join("<br>");
+  }
+  const fontPx = Math.max(6, size * scale);
+  let css = "font-family:'" + font + "',Arial,sans-serif;font-weight:" + (bold ? "700" : "400") +
+            ";font-size:" + fontPx.toFixed(1) + "px;line-height:1.25;color:#fff;display:inline-block;max-width:100%;";
+  if (bg === "box") {
+    const pad = Math.max(1, outline * scale * 2);
+    css += "background:rgba(0,0,0," + (1 - bgalpha / 100).toFixed(2) + ");padding:" + pad.toFixed(1) + "px " + (pad * 1.5).toFixed(1) + "px;";
+  } else {
+    const ow = Math.max(0.5, outline * scale);
+    css += "text-shadow:" + [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]]
+      .map(function (d) { return (d[0] * ow).toFixed(1) + "px " + (d[1] * ow).toFixed(1) + "px 0 #000"; }).join(",") + ";";
+  }
+  txt.innerHTML = '<span style="' + css + '">' + inner + "</span>";
+  const m = (margin * scale).toFixed(1) + "px";
+  txt.style.top = txt.style.bottom = "auto"; txt.style.transform = "none";
+  if (align === "8") txt.style.top = m;
+  else if (align === "5") { txt.style.top = "50%"; txt.style.transform = "translateY(-50%)"; }
+  else txt.style.bottom = m;
+}
+["input", "change"].forEach(function (ev) {
+  $("#burninModal").addEventListener(ev, updateBurninPreview);
 });
 $("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
 $("#biStart").addEventListener("click", requestBurnin);

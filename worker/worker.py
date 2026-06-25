@@ -78,8 +78,9 @@ def process(job):
     progress(jid, "processing", 10)
     _download({"action": "worker_source", "id": jid}, src)
 
-    # detekce FPS (pouze pro video soubory, tiché selhání pro audio)
+    # detekce FPS + rozměrů (pro video; pro audio se použije fallback)
     fps = ffmpeg_tools.get_video_fps(src)
+    vw, vh = ffmpeg_tools.get_video_size(src)
 
     # 2) konverze na WAV 16k mono
     progress(jid, "processing", 30)
@@ -110,6 +111,9 @@ def process(job):
                 "text_preview": (result.get("text") or "")[:20000]}
         if fps is not None:
             data["fps"] = fps
+        if vw and vh:
+            data["width"] = vw
+            data["height"] = vh
         rr = requests.post(API, params={"action": "worker_result"}, headers=HEAD,
                            data=data, files=files, timeout=300)
         rr.raise_for_status()

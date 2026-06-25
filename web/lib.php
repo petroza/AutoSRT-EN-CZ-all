@@ -233,6 +233,8 @@ function public_job(array $j): array {
         'error'        => $j['error'] ?? null,
         'duration'     => $j['duration'] ?? 0,
         'fps'          => isset($j['fps']) ? (float)$j['fps'] : null,
+        'width'        => isset($j['width']) ? (int)$j['width'] : null,
+        'height'       => isset($j['height']) ? (int)$j['height'] : null,
         'text_preview' => $j['text_preview'] ?? '',
         'outputs'      => $j['outputs'] ?? [],
         'size'         => (int)($j['size'] ?? 0),
