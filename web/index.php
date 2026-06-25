@@ -71,7 +71,7 @@ header('Pragma: no-cache');
               <label><input type="checkbox" value="srt" checked> SRT</label>
               <label><input type="checkbox" value="vtt" checked> VTT</label>
               <label><input type="checkbox" value="txt" checked> TXT</label>
-              <label><input type="checkbox" value="json" checked> JSON</label>
+              <label title="JSON je nutný pro Korektor, After Effects, překlad a karaoke"><input type="checkbox" value="json" checked disabled> JSON</label>
             </div>
           </div>
           <label class="toggle"><input type="checkbox" id="useLlm" checked>
@@ -128,7 +128,7 @@ header('Pragma: no-cache');
 
     <!-- KOREKTOR (Word-style) -->
     <div id="editor" class="editor-overlay hidden">
-      <div class="editor-box">
+      <div class="editor-box" role="dialog" aria-modal="true" aria-label="Korektor titulků">
         <div class="editor-head">
           <div class="editor-title">✎ Korektor titulků
             <span class="editor-hint">Podtržená slova klikni/ťukni → návrh, vlastní vrstvy, ruční úprava</span>
@@ -153,7 +153,7 @@ header('Pragma: no-cache');
 
     <!-- EXPORT PRO AFTER EFFECTS -->
     <div id="aeModal" class="ae-overlay hidden">
-      <div class="ae-box">
+      <div class="ae-box" role="dialog" aria-modal="true">
         <div class="ae-title">🎬 Export titulků pro After Effects</div>
         <div class="ae-tabs" role="tablist">
           <button class="ae-tab active" data-tab="0" role="tab" aria-selected="true">Titulky</button>
@@ -238,7 +238,7 @@ header('Pragma: no-cache');
 
     <!-- NASTAVENÍ ZAPÉKÁNÍ TITULKŮ DO VIDEA -->
     <div id="burninModal" class="ae-overlay hidden">
-      <div class="ae-box">
+      <div class="ae-box" role="dialog" aria-modal="true">
         <div class="ae-title">🎞 Zapéct titulky do videa</div>
         <div id="biPreview" class="bi-preview"><div id="biPreviewText" class="bi-prev-text"></div></div>
         <div class="ae-hint" style="margin-top:-4px">Náhled velikosti a pozice (orientační).</div>
@@ -302,7 +302,7 @@ header('Pragma: no-cache');
 
     <!-- PŘEKLAD TITULKŮ (po přepisu) -->
     <div id="translateModal" class="ae-overlay hidden">
-      <div class="ae-box">
+      <div class="ae-box" role="dialog" aria-modal="true">
         <div class="ae-title">🌐 Přeložit titulky</div>
         <label class="ae-row"><span>Do jazyka</span>
           <select id="trTarget">
@@ -329,7 +329,7 @@ header('Pragma: no-cache');
 
     <!-- ÚPRAVA PŘEKLADU -->
     <div id="trEditModal" class="ae-overlay hidden">
-      <div class="ae-box">
+      <div class="ae-box" role="dialog" aria-modal="true">
         <div class="ae-title">✎ Upravit překlad</div>
         <div id="trEditMsg" class="status-line"></div>
         <div id="trEditBody" style="max-height:50vh;overflow:auto;margin:8px 0"></div>
@@ -342,6 +342,6 @@ header('Pragma: no-cache');
       </div>
     </div>
 
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>

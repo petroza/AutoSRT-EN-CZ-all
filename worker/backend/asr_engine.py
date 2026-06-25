@@ -457,6 +457,11 @@ def _postprocess(result: dict, use_llm: Optional[bool] = None,
                           for k, v in fixes.items()]
                 for seg in segs:
                     _apply_rules_to_tokens(seg, frules)
+    # sjednotit zdroj pravdy: TXT (result['text']) ze stejných segmentů jako SRT/VTT/JSON
+    if segs:
+        joined = " ".join((s.get("text") or "").strip() for s in segs).strip()
+        if joined:
+            result["text"] = joined
     return result
 
 

@@ -81,7 +81,11 @@ function setupDz() {
   ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("drag"); }));
   dz.addEventListener("drop", e => { if (e.dataTransfer.files.length) pickFile(e.dataTransfer.files[0]); });
 }
-function fmts() { return Array.from(document.querySelectorAll("#formats input:checked")).map(c => c.value); }
+function fmts() {
+  const f = Array.from(document.querySelectorAll("#formats input:checked")).map(c => c.value);
+  if (!f.includes("json")) f.push("json");   // JSON je nutný pro Korektor/AE/překlad/karaoke
+  return f;
+}
 $("#btnUpload").addEventListener("click", async () => {
   if (!selectedFile) return;
   const f = fmts(); if (!f.length) { alert("Vyber aspoň jeden výstup."); return; }
