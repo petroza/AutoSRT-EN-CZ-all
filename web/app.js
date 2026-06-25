@@ -176,6 +176,7 @@ function openJob(j) {
   currentId = j.id;
   window.curJob = j;
   window.curView = "orig";
+  window.curViewExplicit = false;   // uživatel ještě ručně nevybral pohled
   $("#preview").contentEditable = "false"; $("#preview").style.outline = ""; $("#tvSaveText").classList.add("hidden");
   document.querySelectorAll(".job").forEach(el => el.classList.remove("active"));
   const pv = $("#preview"), dl = $("#downloads"), ed = $("#btnEditor"), ae = $("#btnAE");
@@ -512,7 +513,11 @@ async function generateAE() {
 $("#btnAE").addEventListener("click", async () => {
   $("#aeMsg").textContent = ""; $("#aePreview").classList.add("hidden");
   fillSubsSelect($("#aeSubs"));
-  refreshCurTranslate().then(() => fillSubsSelect($("#aeSubs")));   // po dotažení překladu doplnit
+  refreshCurTranslate().then(function () {
+    fillSubsSelect($("#aeSubs"));
+    if (window.curTranslate && window.curTranslate.status === "done" && window.curTranslate.target)
+      $("#aeSubs").value = window.curTranslate.target;   // předvyber překlad
+  });
   if (window.curJob && window.curJob.fps) {
     const sel = $("#aeFps"), target = window.curJob.fps;
     let best = null, bestDiff = Infinity;
@@ -650,6 +655,10 @@ $("#btnBurnin").addEventListener("click", async function () {
   setTimeout(updateBurninPreview, 0);           // až po vykreslení (kvůli šířce)
   await refreshCurTranslate();                  // a po dotažení znovu (kdyby překlad mezitím doběhl)
   fillSubsSelect($("#biSubs"));
+  // když existuje překlad, předvyber ho (jinak by se omylem zapekl originál)
+  if (window.curTranslate && window.curTranslate.status === "done" && window.curTranslate.target) {
+    $("#biSubs").value = window.curTranslate.target;
+  }
 });
 $("#biMode").addEventListener("change", function () {
   $("#biHiRow").style.display = (this.value === "karaoke") ? "" : "none";
@@ -845,7 +854,8 @@ function updateTranslateUI(tr) {
     if (tr.text) {                                   // přepínač náhledu originál/překlad
       $("#translateView").classList.remove("hidden");
       $("#tvTrans").textContent = "Překlad – " + (tr.target || "");
-      setPreviewView(window.curView || "orig");      // udrž aktuální pohled
+      // když existuje překlad, ukaž rovnou JEHO (dokud uživatel ručně nepřepne)
+      setPreviewView(window.curViewExplicit ? window.curView : "trans");
     }
   } else if (tr.status === "error") {
     setMsg("translateMsg", "Chyba překladu: " + (tr.error || "neznámá"), "err");
@@ -863,8 +873,8 @@ function updateTranslateUI(tr) {
 $("#btnTranslate").addEventListener("click", function () { $("#trMsg").textContent = ""; $("#translateModal").classList.remove("hidden"); });
 $("#trClose").addEventListener("click", function () { $("#translateModal").classList.add("hidden"); });
 $("#trStart").addEventListener("click", requestTranslate);
-$("#tvOrig").addEventListener("click", function () { setPreviewView("orig"); });
-$("#tvTrans").addEventListener("click", function () { setPreviewView("trans"); });
+$("#tvOrig").addEventListener("click", function () { window.curViewExplicit = true; setPreviewView("orig"); });
+$("#tvTrans").addEventListener("click", function () { window.curViewExplicit = true; setPreviewView("trans"); });
 
 /* ---- ruční úprava překladu (časování zůstane) ---- */
 function fmtSec(s) { const m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ":" + (x < 10 ? "0" : "") + x; }
