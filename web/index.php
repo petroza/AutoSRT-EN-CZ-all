@@ -228,6 +228,18 @@
         <div class="ae-title">🎞 Zapéct titulky do videa</div>
         <label class="ae-row"><span>Titulky</span>
           <select id="biSubs"><option value="original">originál</option></select></label>
+        <label class="ae-row"><span>Režim</span>
+          <select id="biMode">
+            <option value="normal">normální</option>
+            <option value="karaoke">karaoke (vybarvování slov)</option>
+          </select></label>
+        <label class="ae-row" id="biHiRow" style="display:none"><span>Barva zvýraznění</span>
+          <select id="biHi">
+            <option value="yellow">žlutá</option>
+            <option value="green">zelená</option>
+            <option value="cyan">azurová</option>
+            <option value="red">červená</option>
+          </select></label>
         <label class="ae-row"><span>Font</span>
           <select id="biFont">
             <option>Arial</option><option>Verdana</option><option>Tahoma</option>
@@ -299,6 +311,6 @@
       </div>
     </div>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

@@ -149,6 +149,16 @@ def process_burnin(job):
 
     # 3) burn-in (s nastavením z webu a hlášením progresu enkódování 40..90 %)
     opts = job.get("opts") or {}
+    # karaoke: stáhni JSON se segmenty + časy slov (vybarvování v rytmu řeči)
+    if str(opts.get("mode")) == "karaoke":
+        try:
+            src_json = WORK / f"{jid}_src.json"
+            _download({"action": "worker_source_json", "id": src_id}, src_json)
+            opts["segments"] = json.loads(src_json.read_text(encoding="utf-8")).get("segments", [])
+            src_json.unlink(missing_ok=True)
+        except Exception as e:
+            print(f"[BURN] karaoke JSON nedostupný, fallback na normál: {e}")
+            opts["mode"] = "normal"
     _last = {"p": 0}
 
     def _cb(pct):

@@ -269,6 +269,83 @@ def _build_ass(srt_text: str, vid_w: int, vid_h: int, font: str, size: int,
     return header + "\n".join(events) + "\n"
 
 
+def _sec_to_ass(sec: float) -> str:
+    """Sekundy -> ASS čas H:MM:SS.cc."""
+    if sec < 0:
+        sec = 0.0
+    cs = int(round(sec * 100))
+    h, cs = divmod(cs, 360000)
+    m, cs = divmod(cs, 6000)
+    s, c = divmod(cs, 100)
+    return f"{h}:{m:02d}:{s:02d}.{c:02d}"
+
+
+def _karaoke_segment(tokens: list, seg_start: float, seg_end: float,
+                     chars: int, max_lines: int) -> str:
+    """Z tokenů {w,start,end} sestaví karaoke text s \\kf tagy (fill po slovech)
+    a zlomy \\N. Bez časů slov rozloží trvání poměrově dle délky slov."""
+    words = [(t.get("w") or "").strip() for t in tokens]
+    words = [w for w in words if w]
+    if not words:
+        return ""
+    n = len(words)
+    toks = [t for t in tokens if (t.get("w") or "").strip()]
+    have = len(toks) == n and all(("start" in t and "end" in t) for t in toks)
+    if have:
+        st = [float(toks[i]["start"]) for i in range(n)]
+        durs = []
+        for i in range(n):
+            nxt = st[i + 1] if i + 1 < n else seg_end
+            durs.append(max(1, int(round((nxt - st[i]) * 100))))
+    else:
+        total = max(1, int(round((seg_end - seg_start) * 100)))
+        lens = [max(1, len(w)) for w in words]
+        ssum = sum(lens)
+        durs = [max(1, int(round(total * l / ssum))) for l in lens]
+    wrap = chars if (chars and chars >= 10) else (1000 if max_lines == 1 else 42)
+    lines, cur, curlen = [], [], 0
+    for w, d in zip(words, durs):
+        if cur and (curlen + 1 + len(w)) > wrap and len(lines) < max_lines - 1:
+            lines.append(cur)
+            cur, curlen = [], 0
+        cur.append((w, d))
+        curlen += len(w) + (1 if curlen else 0)
+    if cur:
+        lines.append(cur)
+    parts = ["".join(f"{{\\kf{d}}}{w} " for w, d in ln).rstrip() for ln in lines]
+    return "\\N".join(parts)
+
+
+def _build_ass_karaoke(segments: list, vid_w: int, vid_h: int, font: str, size: int,
+                       align: int, marginv: int, bold: int, outline: int, chars: int,
+                       max_lines: int, border_style: int, outline_colour: str,
+                       back_colour: str, shadow: int, primary: str, secondary: str) -> str:
+    """ASS s karaoke efektem (slova se vybarvují v rytmu řeči). primary = barva
+    vybarveného slova, secondary = barva ještě nevyřčeného (základ)."""
+    events = []
+    for seg in segments:
+        toks = seg.get("tokens") or [{"w": w} for w in str(seg.get("text", "")).split()]
+        start = float(seg.get("start", 0) or 0)
+        end = float(seg.get("end", start) or start)
+        ktext = _karaoke_segment(toks, start, end, chars, max_lines)
+        if ktext:
+            events.append(f"Dialogue: 0,{_sec_to_ass(start)},{_sec_to_ass(end)},"
+                          f"Default,,0,0,0,,{ktext}")
+    header = (
+        "[Script Info]\nScriptType: v4.00+\nWrapStyle: 2\n"
+        f"PlayResX: {vid_w}\nPlayResY: {vid_h}\nScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,{font},{size},{primary},{secondary},{outline_colour},{back_colour},"
+        f"{bold},0,0,0,100,100,0,0,{border_style},{outline},{shadow},{align},40,40,{marginv},1\n\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    return header + "\n".join(events) + "\n"
+
+
 def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
                    output_path: Union[str, Path], opts: Optional[dict] = None,
                    progress_cb: Optional[Callable[[int], None]] = None,
@@ -326,11 +403,23 @@ def burn_subtitles(video_path: Union[str, Path], srt_path: Union[str, Path],
     # dlouhý řádek sám nezalomí. ASS dáme vedle výstupu a ffmpeg pustíme s cwd
     # (Windows neumí dvojtečku disku ve filtru -> relativní název).
     vid_w, vid_h = get_video_size(video_path, log)
-    src_text = srt_path.read_text(encoding="utf-8", errors="replace")
-    ass_text = _build_ass(src_text, vid_w, vid_h, font, size, align, marginv,
-                          bold, outline, chars, maxlines,
-                          border_style=border_style, outline_colour=outline_colour,
-                          back_colour=back_colour, shadow=shadow)
+    mode = str(opts.get("mode", "normal"))
+    segments = opts.get("segments")
+    if mode == "karaoke" and segments:
+        # barva vybarveného slova (PrimaryColour); základ = bílá (SecondaryColour)
+        HI = {"yellow": "&H0000FFFF", "green": "&H0000FF00", "cyan": "&H00FFFF00",
+              "red": "&H000000FF", "white": "&H00FFFFFF"}
+        primary = HI.get(str(opts.get("hicolor", "yellow")), "&H0000FFFF")
+        ass_text = _build_ass_karaoke(
+            segments, vid_w, vid_h, font, size, align, marginv, bold, outline,
+            chars, maxlines, border_style, outline_colour, back_colour, shadow,
+            primary, "&H00FFFFFF")
+    else:
+        src_text = srt_path.read_text(encoding="utf-8", errors="replace")
+        ass_text = _build_ass(src_text, vid_w, vid_h, font, size, align, marginv,
+                              bold, outline, chars, maxlines,
+                              border_style=border_style, outline_colour=outline_colour,
+                              back_colour=back_colour, shadow=shadow)
     tmp_ass = output_path.with_suffix(".tmp.ass")
     tmp_ass.write_text(ass_text, encoding="utf-8")
     work_dir = tmp_ass.parent

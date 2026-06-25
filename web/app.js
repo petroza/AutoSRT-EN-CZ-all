@@ -548,6 +548,8 @@ async function requestBurnin() {
   fd.append("bg", $("#biBg").value);
   fd.append("bgalpha", $("#biBgAlpha").value);
   fd.append("outline", $("#biOutline").value);
+  fd.append("mode", $("#biMode").value);
+  fd.append("hicolor", $("#biHi").value);
   try {
     await api("request_burnin", { method: "POST", body: fd });
     pollBurnin();
@@ -626,9 +628,18 @@ function parseSrt(txt) {
 $("#btnBurnin").addEventListener("click", async function () {
   $("#biMsg").textContent = "";
   fillSubsSelect($("#biSubs"));                 // hned z toho, co je známo
+  // karaoke jen když je k dispozici JSON (časy slov)
+  var hasJson = !!(window.curJob && window.curJob.outputs && window.curJob.outputs.json);
+  var karOpt = document.querySelector('#biMode option[value=karaoke]');
+  if (karOpt) karOpt.disabled = !hasJson;
+  if (!hasJson && $("#biMode").value === "karaoke") $("#biMode").value = "normal";
+  $("#biHiRow").style.display = ($("#biMode").value === "karaoke") ? "" : "none";
   $("#burninModal").classList.remove("hidden");
   await refreshCurTranslate();                  // a po dotažení znovu (kdyby překlad mezitím doběhl)
   fillSubsSelect($("#biSubs"));
+});
+$("#biMode").addEventListener("change", function () {
+  $("#biHiRow").style.display = (this.value === "karaoke") ? "" : "none";
 });
 $("#biClose").addEventListener("click", function () { $("#burninModal").classList.add("hidden"); });
 $("#biStart").addEventListener("click", requestBurnin);

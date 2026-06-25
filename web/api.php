@@ -274,7 +274,15 @@ case 'request_burnin':
         'bg'      => ((string)($_POST['bg'] ?? 'none') === 'box') ? 'box' : 'none',
         'bgalpha' => max(0, min(100, (int)($_POST['bgalpha'] ?? 35))),
         'outline' => max(0, min(20, (int)($_POST['outline'] ?? 0))),
+        'mode'    => ((string)($_POST['mode'] ?? 'normal') === 'karaoke') ? 'karaoke' : 'normal',
+        'hicolor' => in_array((string)($_POST['hicolor'] ?? 'yellow'),
+                               ['yellow', 'green', 'cyan', 'red', 'white'], true)
+                     ? (string)$_POST['hicolor'] : 'yellow',
     ];
+    // karaoke potřebuje JSON se segmenty (časy slov)
+    if ($opts['mode'] === 'karaoke' && !is_file(OUT_DIR . '/' . clean_id($j['id']) . '.json')) {
+        jsend(['error' => 'Karaoke potřebuje JSON výstup – přidej JSON do formátů a přepiš znovu'], 400);
+    }
 
     // které titulky zapéct: 'original' nebo cílový jazyk dokončeného překladu
     $subs = (string)($_POST['subs'] ?? 'original');

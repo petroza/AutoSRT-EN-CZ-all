@@ -496,7 +496,8 @@ def _group_words_into_segments(words: List[dict]) -> List[dict]:
             flush()
         if cur_start is None:
             cur_start = start
-        cur_toks.append({"w": w, "conf": conf})
+        cur_toks.append({"w": w, "conf": conf,
+                         "start": round(start, 3), "end": round(end, 3)})
         cur_end = end
         last_end = end
         # zalom po konci věty, pokud je řádek aspoň rozumně dlouhý
