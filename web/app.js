@@ -355,7 +355,16 @@ async function saveEdits() {
   } catch (e) { $("#edMsg").textContent = "Chyba uložení: " + e.message; }
 }
 
-$("#btnEditor").addEventListener("click", openEditor);
+// Korektor opravuje to, co je zobrazené: originál -> klasický korektor,
+// překlad -> editor přeložených titulků (jinak by ukazoval azbuku/originál).
+function openCorrector() {
+  if (window.curView === "trans" && window.curTranslate && window.curTranslate.status === "done") {
+    openTransEditor();
+  } else {
+    openEditor();
+  }
+}
+$("#btnEditor").addEventListener("click", openCorrector);
 $("#edClose").addEventListener("click", () => { $("#editor").classList.add("hidden"); closeWordMenu(); });
 $("#edFixAll").addEventListener("click", () => { edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.w; })); renderEditor(); });
 $("#edRevertAll").addEventListener("click", () => { edState.segs.forEach(s => s.tokens.forEach(t => { if (t.orig != null) t.cur = t.orig; })); renderEditor(); });
